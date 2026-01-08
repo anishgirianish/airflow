@@ -306,6 +306,7 @@ class InProcessExecutionAPI:
             from airflow.api_fastapi.execution_api.app import create_task_execution_api_app
             from airflow.api_fastapi.execution_api.deps import (
                 JWTBearerDep,
+                JWTBearerQueueDep,
                 JWTBearerTIPathDep,
             )
             from airflow.api_fastapi.execution_api.routes.connections import has_connection_access
@@ -321,6 +322,7 @@ class InProcessExecutionAPI:
 
             self._app.dependency_overrides[JWTBearerDep.dependency] = always_allow
             self._app.dependency_overrides[JWTBearerTIPathDep.dependency] = always_allow
+            self._app.dependency_overrides[JWTBearerQueueDep.dependency] = always_allow
             self._app.dependency_overrides[has_connection_access] = always_allow
             self._app.dependency_overrides[has_variable_access] = always_allow
             self._app.dependency_overrides[has_xcom_access] = always_allow
