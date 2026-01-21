@@ -56,6 +56,69 @@ def test_set_dag_run_state_to_failed(dag_maker: DagMaker[SerializedDAG]):
     assert "teardown" not in task_dict
 
 
+def test_dag_run_state_persists_after_update_state(dag_maker: DagMaker[SerializedDAG]):
+    """
+    Test for issue #57061: DAG state should remain FAILED after manual failure.
+
+    When a user manually marks a running DAG as failed:
+    1. Running tasks are set to FAILED
+    2. Pending leaf tasks are set to UPSTREAM_FAILED (not SKIPPED)
+    3. When scheduler calls update_state(), DAG must stay FAILED
+
+    If pending leaf tasks were SKIPPED (which is in success_states), the scheduler's
+    update_state() would see all leaf tasks in success_states and mark DAG as SUCCESS,
+    overriding the user's manual failure. Using UPSTREAM_FAILED (which is in failed_states)
+    ensures the DAG stays FAILED.
+    """
+    # Create a simple linear DAG: start -> middle (running) -> end (pending leaf)
+    with dag_maker("TEST_DAG_PERSIST_FAILED") as dag:
+        start = EmptyOperator(task_id="start")
+        middle = EmptyOperator(task_id="middle")
+        end = EmptyOperator(task_id="end")  # This is the leaf task
+        start >> middle >> end
+
+    dr = dag_maker.create_dagrun()
+
+    # Set up initial state: start completed, middle running, end pending
+    for ti in dr.get_task_instances():
+        if ti.task_id == "start":
+            ti.set_state(TaskInstanceState.SUCCESS)
+        elif ti.task_id == "middle":
+            ti.set_state(TaskInstanceState.RUNNING)
+        # "end" stays in None/pending state
+    dag_maker.session.flush()
+
+    # User manually marks DAG as failed
+    set_dag_run_state_to_failed(dag=dag, run_id=dr.run_id, commit=True, session=dag_maker.session)
+    dag_maker.session.flush()
+
+    # Verify DAG is FAILED after manual marking
+    dr_after_manual_fail = dag_maker.session.scalar(
+        select(DagRun).filter_by(dag_id=dr.dag_id, run_id=dr.run_id)
+    )
+    assert dr_after_manual_fail.state == DagRunState.FAILED, "DAG should be FAILED after manual marking"
+
+    # Verify the leaf task (end) is UPSTREAM_FAILED, not SKIPPED
+    tis_after = {ti.task_id: ti for ti in dr_after_manual_fail.get_task_instances()}
+    assert tis_after["end"].state == TaskInstanceState.UPSTREAM_FAILED, (
+        "Leaf task should be UPSTREAM_FAILED (in failed_states), not SKIPPED (in success_states)"
+    )
+
+    # Now simulate what the scheduler does: call update_state()
+    # This is the critical test - with SKIPPED, this would change DAG to SUCCESS
+    dr_after_manual_fail.update_state(session=dag_maker.session)
+    dag_maker.session.flush()
+
+    # Verify DAG is STILL FAILED after update_state()
+    dr_final = dag_maker.session.scalar(select(DagRun).filter_by(dag_id=dr.dag_id, run_id=dr.run_id))
+    assert dr_final.state == DagRunState.FAILED, (
+        "DAG should remain FAILED after update_state(). "
+        "If this fails, it means leaf tasks were set to SKIPPED (success_states) "
+        "instead of UPSTREAM_FAILED (failed_states), causing scheduler to override "
+        "the manual failure with SUCCESS."
+    )
+
+
 @pytest.mark.parametrize(
     "unfinished_state", sorted([state for state in State.unfinished if state is not None])
 )

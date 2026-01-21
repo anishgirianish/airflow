@@ -317,7 +317,7 @@ def set_dag_run_state_to_failed(
 
     running_tasks = [_set_runing_task(task) for task in dag.tasks if task.task_id in task_ids_of_running_tis]
 
-    # Mark non-finished tasks as SKIPPED.
+    # Mark non-finished tasks as UPSTREAM_FAILED (not SKIPPED, see issue #57061).
     pending_tis: list[TaskInstance] = list(
         session.scalars(
             select(TaskInstance).filter(
@@ -334,7 +334,7 @@ def set_dag_run_state_to_failed(
         ).all()
     )
 
-    # Do not skip teardown tasks
+    # Do not mark teardown tasks as UPSTREAM_FAILED
     pending_normal_tis = [ti for ti in pending_tis if not dag.task_dict[ti.task_id].is_teardown]
 
     if commit:
