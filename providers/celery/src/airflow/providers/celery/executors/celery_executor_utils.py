@@ -196,7 +196,6 @@ def execute_workload(input: str) -> None:
     from airflow.executors import workloads
     from airflow.sdk.execution_time.supervisor import supervise
 
-    # TaskAlreadyRunningError was added in Airflow 3.0.7/3.1.7
     try:
         from airflow.sdk.exceptions import TaskAlreadyRunningError
     except ImportError:
@@ -233,7 +232,6 @@ def execute_workload(input: str) -> None:
         else:
             raise ValueError(f"CeleryExecutor does not know how to handle {type(workload)}")
     except Exception as e:
-        # Handle broker redelivery (TaskAlreadyRunningError) if available
         if TaskAlreadyRunningError is not None and isinstance(e, TaskAlreadyRunningError):
             log.info("[%s] Task already running elsewhere, ignoring redelivered message", celery_task_id)
             raise Ignore()
