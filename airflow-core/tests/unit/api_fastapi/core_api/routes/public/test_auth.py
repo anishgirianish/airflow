@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import jwt
 import pytest
 
 from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
@@ -100,3 +101,39 @@ class TestLogout(TestAuthEndpoint):
         if delete_cookies:
             cookies = response.headers.get_list("set-cookie")
             assert any(f"{COOKIE_NAME_JWT_TOKEN}=" in c for c in cookies)
+
+    @patch("airflow.api_fastapi.core_api.routes.public.auth.RevokedToken")
+    def test_logout_blacklists_token(self, mock_revoked_token, test_client):
+        """Test that logout blacklists the JWT token's jti."""
+        test_client.app.state.auth_manager.get_url_logout.return_value = None
+        token_payload = {"sub": "admin", "jti": "test-jti-123", "exp": 9999999999}
+        token_str = jwt.encode(token_payload, "secret", algorithm="HS256")
+
+        test_client.cookies.set(COOKIE_NAME_JWT_TOKEN, token_str)
+        response = test_client.get("/auth/logout", follow_redirects=False)
+
+        assert response.status_code == 307
+        mock_revoked_token.revoke.assert_called_once()
+        call_args = mock_revoked_token.revoke.call_args
+        assert call_args[0][0] == "test-jti-123"
+
+    @patch("airflow.api_fastapi.core_api.routes.public.auth.RevokedToken")
+    def test_logout_without_cookie_does_not_blacklist(self, mock_revoked_token, test_client):
+        """Test that logout without a cookie does not attempt to blacklist."""
+        test_client.app.state.auth_manager.get_url_logout.return_value = None
+
+        response = test_client.get("/auth/logout", follow_redirects=False)
+
+        assert response.status_code == 307
+        mock_revoked_token.revoke.assert_not_called()
+
+    @patch("airflow.api_fastapi.core_api.routes.public.auth.RevokedToken")
+    def test_logout_with_malformed_cookie_does_not_blacklist(self, mock_revoked_token, test_client):
+        """Test that logout with a malformed cookie does not raise and does not blacklist."""
+        test_client.app.state.auth_manager.get_url_logout.return_value = None
+        test_client.cookies.set(COOKIE_NAME_JWT_TOKEN, "not-a-valid-jwt")
+
+        response = test_client.get("/auth/logout", follow_redirects=False)
+
+        assert response.status_code == 307
+        mock_revoked_token.revoke.assert_not_called()

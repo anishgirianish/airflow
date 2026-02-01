@@ -204,6 +204,30 @@ class TestBaseAuthManager:
         assert result == user
 
     @patch(
+        "airflow.api_fastapi.auth.managers.base_auth_manager.RevokedToken.is_revoked",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
+        "airflow.api_fastapi.auth.managers.base_auth_manager.BaseAuthManager._get_token_validator",
+        autospec=True,
+    )
+    @pytest.mark.asyncio
+    async def test_get_user_from_token_revoked(
+        self, mock__get_token_validator, mock_is_revoked, auth_manager
+    ):
+        token = "token"
+        payload = {"jti": "some-jti"}
+        signer = AsyncMock(spec=JWTValidator)
+        signer.avalidated_claims.return_value = payload
+        mock__get_token_validator.return_value = signer
+
+        with pytest.raises(InvalidTokenError, match="Token has been revoked"):
+            await auth_manager.get_user_from_token(token)
+
+        mock_is_revoked.assert_called_once_with("some-jti")
+
+    @patch(
         "airflow.api_fastapi.auth.managers.base_auth_manager.BaseAuthManager._get_token_validator",
         autospec=True,
     )
