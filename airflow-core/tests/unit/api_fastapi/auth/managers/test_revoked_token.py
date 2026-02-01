@@ -45,7 +45,7 @@ class TestRevokedTokenModel:
         )
 
         with patch(
-            "airflow.models.revoked_token.create_session_async",
+            "airflow.utils.session.create_session_async",
             return_value=mock_session,
         ):
             result = await RevokedToken.is_revoked("known-jti")
@@ -60,7 +60,7 @@ class TestRevokedTokenModel:
         )
 
         with patch(
-            "airflow.models.revoked_token.create_session_async",
+            "airflow.utils.session.create_session_async",
             return_value=mock_session,
         ):
             result = await RevokedToken.is_revoked("unknown-jti")
