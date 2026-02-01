@@ -204,7 +204,7 @@ class TestBaseAuthManager:
         assert result == user
 
     @patch(
-        "airflow.api_fastapi.auth.managers.base_auth_manager.RevokedToken.is_revoked",
+        "airflow.models.revoked_token.RevokedToken.is_revoked",
         new_callable=AsyncMock,
         return_value=True,
     )
