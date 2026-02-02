@@ -17,9 +17,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from airflow.models.revoked_token import RevokedToken
 
@@ -36,32 +34,16 @@ class TestRevokedTokenModel:
         assert arg.jti == "test-jti-123"
         assert arg.exp == exp
 
-    @pytest.mark.asyncio
-    async def test_is_revoked_returns_true(self):
+    def test_is_revoked_returns_true(self):
         """Test that a revoked JTI is detected."""
-        mock_session = AsyncMock()
-        mock_session.__aenter__.return_value.execute = AsyncMock(
-            return_value=MagicMock(scalar=MagicMock(return_value=True))
-        )
+        mock_session = MagicMock()
+        mock_session.execute.return_value.first.return_value = ("known-jti",)
+        result = RevokedToken.is_revoked("known-jti", session=mock_session)
+        assert result is True
 
-        with patch(
-            "airflow.utils.session.create_session_async",
-            return_value=mock_session,
-        ):
-            result = await RevokedToken.is_revoked("known-jti")
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_is_revoked_returns_false(self):
+    def test_is_revoked_returns_false(self):
         """Test that an unknown JTI returns False."""
-        mock_session = AsyncMock()
-        mock_session.__aenter__.return_value.execute = AsyncMock(
-            return_value=MagicMock(scalar=MagicMock(return_value=False))
-        )
-
-        with patch(
-            "airflow.utils.session.create_session_async",
-            return_value=mock_session,
-        ):
-            result = await RevokedToken.is_revoked("unknown-jti")
-            assert result is False
+        mock_session = MagicMock()
+        mock_session.execute.return_value.first.return_value = None
+        result = RevokedToken.is_revoked("unknown-jti", session=mock_session)
+        assert result is False

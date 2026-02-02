@@ -205,7 +205,6 @@ class TestBaseAuthManager:
 
     @patch(
         "airflow.models.revoked_token.RevokedToken.is_revoked",
-        new_callable=AsyncMock,
         return_value=True,
     )
     @patch(

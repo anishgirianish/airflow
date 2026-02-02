@@ -143,7 +143,7 @@ class BaseAuthManager(Generic[T], LoggingMixin, metaclass=ABCMeta):
         from airflow.models.revoked_token import RevokedToken
 
         jti = payload.get("jti")
-        if jti and await RevokedToken.is_revoked(jti):
+        if jti and RevokedToken.is_revoked(jti):
             raise InvalidTokenError("Token has been revoked")
 
         try:
