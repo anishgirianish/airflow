@@ -16,12 +16,10 @@
 # under the License.
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timezone
-
-import jwt
+import structlog
 from fastapi import HTTPException, Request, status
 from fastapi.responses import RedirectResponse
+from jwt import InvalidTokenError
 from sqlalchemy.exc import SQLAlchemyError
 
 from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
@@ -30,7 +28,7 @@ from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_
 from airflow.api_fastapi.core_api.security import AuthManagerDep, is_safe_url
 from airflow.configuration import conf
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(logger_name=__name__)
 
 auth_router = AirflowRouter(tags=["Login"], prefix="/auth")
 
@@ -63,22 +61,10 @@ def logout(request: Request, auth_manager: AuthManagerDep) -> RedirectResponse:
         return RedirectResponse(logout_url)
 
     # Revoke the current token before deleting the cookie
-    token_str = request.cookies.get(COOKIE_NAME_JWT_TOKEN)
-    if token_str:
+    if token_str := request.cookies.get(COOKIE_NAME_JWT_TOKEN):
         try:
-            header = jwt.get_unverified_header(token_str)
-            claims = jwt.decode(
-                token_str,
-                options={"verify_exp": False, "verify_signature": False},
-                algorithms=[header.get("alg", "HS256")],
-            )
-            jti = claims.get("jti")
-            exp = claims.get("exp")
-            if jti and exp:
-                from airflow.models.revoked_token import RevokedToken
-
-                RevokedToken.revoke(jti, datetime.fromtimestamp(exp, tz=timezone.utc))
-        except (jwt.InvalidTokenError, SQLAlchemyError):
+            auth_manager._get_token_validator().revoke_token(token_str)
+        except (InvalidTokenError, SQLAlchemyError):
             log.warning("Failed to revoke token during logout", exc_info=True)
 
     secure = request.base_url.scheme == "https" or bool(conf.get("api", "ssl_cert", fallback=""))
