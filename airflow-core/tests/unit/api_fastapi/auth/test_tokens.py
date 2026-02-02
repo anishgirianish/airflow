@@ -287,12 +287,38 @@ class TestRevokeToken:
 
         assert RevokedToken.is_revoked("any-jti") is False
 
-    def test_revoke_token_with_invalid_token_raises(self):
-        """Test that revoke_token raises InvalidTokenError for an invalid token."""
-        validator = JWTValidator(secret_key="secret", audience="test", algorithm=["HS256"], leeway=0)
+    def test_revoke_token_with_invalid_token_does_not_raise(self):
+        """Test that revoke_token logs a warning instead of raising for an invalid token."""
+        from airflow.models.revoked_token import RevokedToken
 
-        with pytest.raises(jwt.InvalidTokenError):
-            validator.revoke_token("invalid-token")
+        validator = JWTValidator(secret_key="secret", audience="test", algorithm=["HS256"], leeway=0)
+        validator.revoke_token("invalid-token")
+
+        assert RevokedToken.is_revoked("any-jti") is False
+
+    def test_revoke_token_with_db_error_does_not_raise(self):
+        """Test that revoke_token handles database errors gracefully."""
+        import time
+        from unittest.mock import patch
+
+        from sqlalchemy.exc import SQLAlchemyError
+
+        now = int(time.time())
+        payload = {
+            "sub": "user",
+            "jti": "db-error-jti",
+            "exp": now + 3600,
+            "iat": now,
+            "nbf": now,
+            "aud": "test",
+        }
+        token = jwt.encode(payload, "secret", algorithm="HS256")
+
+        validator = JWTValidator(secret_key="secret", audience="test", algorithm=["HS256"], leeway=0)
+        with patch(
+            "airflow.models.revoked_token.RevokedToken.revoke", side_effect=SQLAlchemyError("db down")
+        ):
+            validator.revoke_token(token)
 
 
 @pytest.fixture(scope="session")

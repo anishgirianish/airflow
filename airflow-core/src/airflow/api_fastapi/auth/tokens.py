@@ -348,9 +348,12 @@ class JWTValidator:
 
     def revoke_token(self, token: str) -> None:
         """Validate the token, extract jti and exp, and revoke it in the database."""
-        claims = self.validated_claims(token)
-        if (jti := claims.get("jti")) and (exp := claims.get("exp")):
-            RevokedToken.revoke(jti, datetime.fromtimestamp(exp, tz=timezone.utc))
+        try:
+            claims = self.validated_claims(token)
+            if (jti := claims.get("jti")) and (exp := claims.get("exp")):
+                RevokedToken.revoke(jti, datetime.fromtimestamp(exp, tz=timezone.utc))
+        except (jwt.InvalidTokenError, Exception):
+            log.warning("Failed to revoke token", exc_info=True)
 
     def status(self):
         if self.jwks:

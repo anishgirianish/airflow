@@ -144,13 +144,12 @@ class TestLogout(TestAuthEndpoint):
         assert response.status_code == 307
         assert RevokedToken.is_revoked("nonexistent-jti") is False
 
-    def test_logout_with_invalid_token_does_not_revoke(self, test_client):
-        """Test that logout with an invalid token does not raise and does not revoke."""
+    def test_logout_with_invalid_token_does_not_raise(self, test_client):
+        """Test that logout with an invalid token does not raise."""
         test_client.app.state.auth_manager.get_url_logout.return_value = None
 
-        mock_validator = MagicMock()
-        mock_validator.revoke_token.side_effect = jwt.InvalidTokenError("bad token")
-        test_client.app.state.auth_manager._get_token_validator.return_value = mock_validator
+        validator = JWTValidator(secret_key="secret", audience="test", algorithm=["HS256"], leeway=0)
+        test_client.app.state.auth_manager._get_token_validator.return_value = validator
 
         test_client.cookies.set(COOKIE_NAME_JWT_TOKEN, "not-a-valid-jwt")
 

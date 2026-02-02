@@ -19,8 +19,6 @@ from __future__ import annotations
 import structlog
 from fastapi import HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from jwt import InvalidTokenError
-from sqlalchemy.exc import SQLAlchemyError
 
 from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
 from airflow.api_fastapi.common.router import AirflowRouter
@@ -62,10 +60,7 @@ def logout(request: Request, auth_manager: AuthManagerDep) -> RedirectResponse:
 
     # Revoke the current token before deleting the cookie
     if token_str := request.cookies.get(COOKIE_NAME_JWT_TOKEN):
-        try:
-            auth_manager._get_token_validator().revoke_token(token_str)
-        except (InvalidTokenError, SQLAlchemyError):
-            log.warning("Failed to revoke token during logout", exc_info=True)
+        auth_manager._get_token_validator().revoke_token(token_str)
 
     secure = request.base_url.scheme == "https" or bool(conf.get("api", "ssl_cert", fallback=""))
     response = RedirectResponse(auth_manager.get_url_login())
