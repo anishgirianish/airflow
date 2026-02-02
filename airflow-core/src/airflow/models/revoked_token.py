@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, select
+from sqlalchemy import String, exists, select
 from sqlalchemy.orm import Mapped
 
 from airflow.models.base import Base
@@ -49,5 +49,4 @@ class RevokedToken(Base):
     @provide_session
     def is_revoked(cls, jti: str, session: Session = NEW_SESSION) -> bool:
         """Check if a token JTI has been revoked."""
-        result = session.execute(select(cls).where(cls.jti == jti).limit(1))
-        return result.first() is not None
+        return bool(session.scalar(select(exists().where(cls.jti == jti))))

@@ -37,13 +37,13 @@ class TestRevokedTokenModel:
     def test_is_revoked_returns_true(self):
         """Test that a revoked JTI is detected."""
         mock_session = MagicMock()
-        mock_session.execute.return_value.first.return_value = ("known-jti",)
+        mock_session.scalar.return_value = True
         result = RevokedToken.is_revoked("known-jti", session=mock_session)
         assert result is True
 
     def test_is_revoked_returns_false(self):
         """Test that an unknown JTI returns False."""
         mock_session = MagicMock()
-        mock_session.execute.return_value.first.return_value = None
+        mock_session.scalar.return_value = False
         result = RevokedToken.is_revoked("unknown-jti", session=mock_session)
         assert result is False
