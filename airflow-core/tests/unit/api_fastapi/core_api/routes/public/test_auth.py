@@ -162,7 +162,8 @@ class TestLogoutTokenRevocation:
             "nbf": now,
         }
         auth_manager = logout_client.app.state.auth_manager
-        token_str = jwt.encode(token_payload, auth_manager._get_token_signer()._secret_key, algorithm="HS256")
+        signer = auth_manager._get_token_signer()
+        token_str = jwt.encode(token_payload, signer._secret_key, algorithm=signer.algorithm)
 
         logout_client.cookies.set(COOKIE_NAME_JWT_TOKEN, token_str)
         with patch.object(auth_manager, "get_url_logout", return_value=None):
