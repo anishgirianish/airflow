@@ -60,7 +60,7 @@ def logout(request: Request, auth_manager: AuthManagerDep) -> RedirectResponse:
 
     # Revoke the current token before deleting the cookie
     if token_str := request.cookies.get(COOKIE_NAME_JWT_TOKEN):
-        auth_manager._get_token_validator().revoke_token(token_str)
+        auth_manager.revoke_token(token_str)
 
     secure = request.base_url.scheme == "https" or bool(conf.get("api", "ssl_cert", fallback=""))
     response = RedirectResponse(auth_manager.get_url_login())

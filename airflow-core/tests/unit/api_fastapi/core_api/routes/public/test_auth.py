@@ -23,7 +23,6 @@ import jwt
 import pytest
 
 from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
-from airflow.api_fastapi.auth.tokens import JWTValidator
 from airflow.models.revoked_token import RevokedToken
 
 from tests_common.test_utils.config import conf_vars
@@ -116,9 +115,6 @@ class TestLogout(TestAuthEndpoint):
         """Test that logout with an invalid token does not raise."""
         test_client.app.state.auth_manager.get_url_logout.return_value = None
 
-        validator = JWTValidator(secret_key="secret", audience="test", algorithm=["HS256"], leeway=0)
-        test_client.app.state.auth_manager._get_token_validator.return_value = validator
-
         test_client.cookies.set(COOKIE_NAME_JWT_TOKEN, "not-a-valid-jwt")
 
         response = test_client.get("/auth/logout", follow_redirects=False)
@@ -153,10 +149,6 @@ class TestLogoutTokenRevocation:
             }
         ):
             app = create_app()
-            auth_manager_mock = MagicMock()
-            auth_manager_mock.get_url_login.return_value = AUTH_MANAGER_LOGIN_URL
-            auth_manager_mock.get_url_logout.return_value = None
-            app.state.auth_manager = auth_manager_mock
             yield TestClient(app, base_url="http://testserver/api/v2")
 
     def test_logout_revokes_token(self, logout_client):
@@ -168,22 +160,22 @@ class TestLogoutTokenRevocation:
             "exp": now + 3600,
             "iat": now,
             "nbf": now,
-            "aud": "test-audience",
         }
-        token_str = jwt.encode(token_payload, "secret", algorithm="HS256")
-
-        validator = JWTValidator(secret_key="secret", audience="test-audience", algorithm=["HS256"], leeway=0)
-        logout_client.app.state.auth_manager._get_token_validator.return_value = validator
+        auth_manager = logout_client.app.state.auth_manager
+        token_str = jwt.encode(token_payload, auth_manager._get_token_signer()._secret_key, algorithm="HS256")
 
         logout_client.cookies.set(COOKIE_NAME_JWT_TOKEN, token_str)
-        response = logout_client.get("/auth/logout", follow_redirects=False)
+        with patch.object(auth_manager, "get_url_logout", return_value=None):
+            response = logout_client.get("/auth/logout", follow_redirects=False)
 
         assert response.status_code == 307
         assert RevokedToken.is_revoked("test-jti-123") is True
 
     def test_logout_without_cookie_does_not_revoke(self, logout_client):
         """Test that logout without a cookie does not attempt to revoke."""
-        response = logout_client.get("/auth/logout", follow_redirects=False)
+        auth_manager = logout_client.app.state.auth_manager
+        with patch.object(auth_manager, "get_url_logout", return_value=None):
+            response = logout_client.get("/auth/logout", follow_redirects=False)
 
         assert response.status_code == 307
         assert RevokedToken.is_revoked("nonexistent-jti") is False

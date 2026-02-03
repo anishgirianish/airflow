@@ -247,6 +247,19 @@ class TestBaseAuthManager:
         mock_deserialize_user.assert_called_once_with(payload)
         signer.avalidated_claims.assert_called_once_with(token)
 
+    @patch(
+        "airflow.api_fastapi.auth.managers.base_auth_manager.BaseAuthManager._get_token_validator",
+        autospec=True,
+    )
+    def test_revoke_token(self, mock__get_token_validator, auth_manager):
+        token = "token"
+        validator = Mock(spec=JWTValidator)
+        mock__get_token_validator.return_value = validator
+
+        auth_manager.revoke_token(token)
+
+        validator.revoke_token.assert_called_once_with(token)
+
     @patch("airflow.api_fastapi.auth.managers.base_auth_manager.JWTGenerator", autospec=True)
     @patch.object(EmptyAuthManager, "serialize_user")
     def test_generate_jwt_token(self, mock_serialize_user, mock_jwt_generator, auth_manager):
