@@ -23,12 +23,12 @@ from typing import TYPE_CHECKING, ClassVar
 
 import structlog
 from sqlalchemy import String, delete, exists, select
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, mapped_column
 
 from airflow.configuration import conf
 from airflow.models.base import Base
 from airflow.utils.session import NEW_SESSION, provide_session
-from airflow.utils.sqlalchemy import UtcDateTime, mapped_column
+from airflow.utils.sqlalchemy import UtcDateTime
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
