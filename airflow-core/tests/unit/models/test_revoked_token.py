@@ -19,7 +19,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import airflow.models.revoked_token as revoked_token_module
 from airflow.models.revoked_token import RevokedToken
 
 
@@ -58,29 +57,36 @@ class TestRevokedTokenCleanup:
         mock_session = MagicMock()
         mock_session.scalar.return_value = False
 
-        original_last_cleanup = revoked_token_module._last_cleanup_time
+        original_last_cleanup = RevokedToken._last_cleanup_time
         try:
-            revoked_token_module._last_cleanup_time = 0.0
-            with patch.object(revoked_token_module.time, "monotonic", return_value=4000.0):
+            RevokedToken._last_cleanup_time = 0.0
+            with (
+                patch("airflow.models.revoked_token.time.monotonic", return_value=8000.0),
+                patch("airflow.models.revoked_token.conf.getint", return_value=3600),
+            ):
                 RevokedToken.is_revoked("test-jti", session=mock_session)
 
             # session.execute should be called for DELETE
             mock_session.execute.assert_called_once()
         finally:
-            revoked_token_module._last_cleanup_time = original_last_cleanup
+            RevokedToken._last_cleanup_time = original_last_cleanup
 
     def test_cleanup_skips_when_interval_not_passed(self):
         """Cleanup should skip when not enough time has passed."""
         mock_session = MagicMock()
         mock_session.scalar.return_value = False
 
-        original_last_cleanup = revoked_token_module._last_cleanup_time
+        original_last_cleanup = RevokedToken._last_cleanup_time
         try:
-            revoked_token_module._last_cleanup_time = 4000.0
-            with patch.object(revoked_token_module.time, "monotonic", return_value=4500.0):
+            RevokedToken._last_cleanup_time = 4000.0
+            # cleanup_interval = 3600 * 2 = 7200, so 4500 - 4000 = 500 < 7200 skips cleanup
+            with (
+                patch("airflow.models.revoked_token.time.monotonic", return_value=4500.0),
+                patch("airflow.models.revoked_token.conf.getint", return_value=3600),
+            ):
                 RevokedToken.is_revoked("test-jti", session=mock_session)
 
             # session.execute should NOT be called
             mock_session.execute.assert_not_called()
         finally:
-            revoked_token_module._last_cleanup_time = original_last_cleanup
+            RevokedToken._last_cleanup_time = original_last_cleanup

@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import structlog
 from sqlalchemy import String, delete, exists, select
 from sqlalchemy.orm import Mapped
 
+from airflow.configuration import conf
 from airflow.models.base import Base
 from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.sqlalchemy import UtcDateTime, mapped_column
@@ -34,16 +35,14 @@ if TYPE_CHECKING:
 
 log = structlog.get_logger(__name__)
 
-# Track last cleanup time to avoid running cleanup on every request
-_last_cleanup_time: float = 0.0
-# Run cleanup approximately every hour (3600 seconds)
-_CLEANUP_INTERVAL_SECONDS: int = 3600
-
 
 class RevokedToken(Base):
     """Stores revoked JWT token JTIs to support token invalidation on logout."""
 
     __tablename__ = "revoked_token"
+
+    # Track last cleanup time to avoid running cleanup on every request
+    _last_cleanup_time: ClassVar[float] = 0.0
 
     jti: Mapped[str] = mapped_column(String(32), primary_key=True)
     exp: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, index=True)
@@ -66,13 +65,14 @@ class RevokedToken(Base):
         """
         Periodically clean up expired revoked tokens.
 
-        Runs approximately once per hour during token validation to prevent
-        unbounded table growth. Uses monotonic time to track intervals.
+        Cleanup interval is based on jwt_expiration_time config to ensure expired
+        tokens are cleaned up after they're no longer useful. Uses monotonic time
+        to track intervals.
         """
-        global _last_cleanup_time
         now = time.monotonic()
-        if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
-            _last_cleanup_time = now
+        cleanup_interval = conf.getint("api_auth", "jwt_expiration_time", fallback=3600) * 2
+        if now - cls._last_cleanup_time >= cleanup_interval:
+            cls._last_cleanup_time = now
             try:
                 session.execute(delete(cls).where(cls.exp < datetime.now(tz=timezone.utc)))
             except Exception:
