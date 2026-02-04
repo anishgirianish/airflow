@@ -17,8 +17,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import airflow.models.revoked_token as revoked_token_module
 from airflow.models.revoked_token import RevokedToken
 
 
@@ -47,3 +48,39 @@ class TestRevokedTokenModel:
         mock_session.scalar.return_value = False
         result = RevokedToken.is_revoked("unknown-jti", session=mock_session)
         assert result is False
+
+
+class TestRevokedTokenCleanup:
+    """Tests for automatic periodic cleanup of expired revoked tokens."""
+
+    def test_cleanup_runs_when_interval_passed(self):
+        """Cleanup should run when enough time has passed since last cleanup."""
+        mock_session = MagicMock()
+        mock_session.scalar.return_value = False
+
+        original_last_cleanup = revoked_token_module._last_cleanup_time
+        try:
+            revoked_token_module._last_cleanup_time = 0.0
+            with patch.object(revoked_token_module.time, "monotonic", return_value=4000.0):
+                RevokedToken.is_revoked("test-jti", session=mock_session)
+
+            # session.execute should be called for DELETE
+            mock_session.execute.assert_called_once()
+        finally:
+            revoked_token_module._last_cleanup_time = original_last_cleanup
+
+    def test_cleanup_skips_when_interval_not_passed(self):
+        """Cleanup should skip when not enough time has passed."""
+        mock_session = MagicMock()
+        mock_session.scalar.return_value = False
+
+        original_last_cleanup = revoked_token_module._last_cleanup_time
+        try:
+            revoked_token_module._last_cleanup_time = 4000.0
+            with patch.object(revoked_token_module.time, "monotonic", return_value=4500.0):
+                RevokedToken.is_revoked("test-jti", session=mock_session)
+
+            # session.execute should NOT be called
+            mock_session.execute.assert_not_called()
+        finally:
+            revoked_token_module._last_cleanup_time = original_last_cleanup

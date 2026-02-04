@@ -17,10 +17,12 @@
 # under the License.
 from __future__ import annotations
 
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, exists, select
+import structlog
+from sqlalchemy import String, delete, exists, select
 from sqlalchemy.orm import Mapped
 
 from airflow.models.base import Base
@@ -29,6 +31,13 @@ from airflow.utils.sqlalchemy import UtcDateTime, mapped_column
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+log = structlog.get_logger(__name__)
+
+# Track last cleanup time to avoid running cleanup on every request
+_last_cleanup_time: float = 0.0
+# Run cleanup approximately every hour (3600 seconds)
+_CLEANUP_INTERVAL_SECONDS: int = 3600
 
 
 class RevokedToken(Base):
@@ -49,4 +58,22 @@ class RevokedToken(Base):
     @provide_session
     def is_revoked(cls, jti: str, session: Session = NEW_SESSION) -> bool:
         """Check if a token JTI has been revoked."""
+        cls._maybe_cleanup_expired(session)
         return bool(session.scalar(select(exists().where(cls.jti == jti))))
+
+    @classmethod
+    def _maybe_cleanup_expired(cls, session: Session) -> None:
+        """
+        Periodically clean up expired revoked tokens.
+
+        Runs approximately once per hour during token validation to prevent
+        unbounded table growth. Uses monotonic time to track intervals.
+        """
+        global _last_cleanup_time
+        now = time.monotonic()
+        if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
+            _last_cleanup_time = now
+            try:
+                session.execute(delete(cls).where(cls.exp < datetime.now(tz=timezone.utc)))
+            except Exception:
+                log.exception("Failed to clean up expired revoked tokens")

@@ -160,6 +160,7 @@ class TestLogoutTokenRevocation:
             "exp": now + 3600,
             "iat": now,
             "nbf": now,
+            "aud": "apache-airflow",
         }
         auth_manager = logout_client.app.state.auth_manager
         signer = auth_manager._get_token_signer()
