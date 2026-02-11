@@ -212,6 +212,10 @@ def execute_workload(input: str) -> None:
     except Exception as e:
         if TaskAlreadyRunningError is not None and isinstance(e, TaskAlreadyRunningError):
             log.info("[%s] Task already running elsewhere, ignoring redelivered message", celery_task_id)
+            # Raise Ignore() so Celery does not record a FAILURE result for this duplicate
+            # delivery. Without this, the broker redelivering the message (e.g. after a
+            # visibility timeout) would cause Celery to mark the task as failed, even though
+            # the original worker is still executing it successfully.
             raise Ignore()
         raise
 

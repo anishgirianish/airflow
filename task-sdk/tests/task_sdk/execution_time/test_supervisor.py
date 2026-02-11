@@ -726,61 +726,6 @@ class TestWatchedSubprocess:
             "task_instance_id": str(ti.id),
         } in captured_logs
 
-    def test_supervisor_handles_already_running_task(self):
-        """Test that Supervisor raises TaskAlreadyRunningError for already running tasks."""
-        from airflow.sdk.exceptions import TaskAlreadyRunningError
-
-        ti = TaskInstance(
-            id=uuid7(), task_id="b", dag_id="c", run_id="d", try_number=1, dag_version_id=uuid7()
-        )
-
-        def handle_request(request: httpx.Request) -> httpx.Response:
-            if request.url.path == f"/task-instances/{ti.id}/run":
-                return httpx.Response(
-                    409,
-                    json={
-                        "detail": {
-                            "reason": "invalid_state",
-                            "message": "TI was not in a state where it could be marked as running",
-                            "previous_state": "running",
-                        }
-                    },
-                )
-
-            return httpx.Response(status_code=204)
-
-        client = make_client(transport=httpx.MockTransport(handle_request))
-
-        with pytest.raises(TaskAlreadyRunningError, match="already running"):
-            ActivitySubprocess.start(dag_rel_path=os.devnull, bundle_info=FAKE_BUNDLE, what=ti, client=client)
-
-    @pytest.mark.parametrize("previous_state", ["failed", "success", "skipped"])
-    def test_supervisor_raises_error_for_other_invalid_states(self, previous_state):
-        """Test that Supervisor raises ServerResponseError for non-running invalid states."""
-        ti = TaskInstance(
-            id=uuid7(), task_id="b", dag_id="c", run_id="d", try_number=1, dag_version_id=uuid7()
-        )
-
-        def handle_request(request: httpx.Request) -> httpx.Response:
-            if request.url.path == f"/task-instances/{ti.id}/run":
-                return httpx.Response(
-                    409,
-                    json={
-                        "detail": {
-                            "reason": "invalid_state",
-                            "message": "TI was not in a state where it could be marked as running",
-                            "previous_state": previous_state,
-                        }
-                    },
-                )
-
-            return httpx.Response(status_code=204)
-
-        client = make_client(transport=httpx.MockTransport(handle_request))
-
-        with pytest.raises(ServerResponseError):
-            ActivitySubprocess.start(dag_rel_path=os.devnull, bundle_info=FAKE_BUNDLE, what=ti, client=client)
-
     @pytest.mark.parametrize("captured_logs", [logging.ERROR], indirect=True, ids=["log_level=error"])
     def test_state_conflict_on_heartbeat(self, captured_logs, monkeypatch, mocker, make_ti_context_dict):
         """

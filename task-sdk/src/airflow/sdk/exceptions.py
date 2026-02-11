@@ -329,7 +329,7 @@ class TaskNotFound(AirflowException):
 
 
 class TaskAlreadyRunningError(AirflowException):
-    """Raise when a task is already running (e.g., broker redelivered the message)."""
+    """Raised when a task is already running on another worker."""
 
 
 class FailFastDagInvalidTriggerRule(AirflowException):

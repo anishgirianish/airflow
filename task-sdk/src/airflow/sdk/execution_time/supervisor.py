@@ -1007,23 +1007,9 @@ class ActivitySubprocess(WatchedSubprocess):
             ti_context = self.client.task_instances.start(ti.id, self.pid, start_date)
             self._should_retry = ti_context.should_retry
             self._last_successful_heartbeat = time.monotonic()
-        except Exception as e:
+        except Exception:
             # On any error kill that subprocess!
             self.kill(signal.SIGKILL)
-
-            # Handle broker redelivery: task already running on another worker
-            if isinstance(e, ServerResponseError) and e.response.status_code == 409:
-                # FastAPI wraps HTTPException detail in {"detail": {...}}
-                detail = e.detail
-                if isinstance(detail, dict) and "detail" in detail:
-                    detail = detail["detail"]
-                if (
-                    isinstance(detail, dict)
-                    and detail.get("reason") == "invalid_state"
-                    and detail.get("previous_state") == "running"
-                ):
-                    log.warning("Task already running, likely broker redelivery", task_instance_id=str(ti.id))
-                    raise TaskAlreadyRunningError(f"Task {ti.id} is already running") from e
             raise
 
         msg = StartupDetails.model_construct(
@@ -2103,8 +2089,8 @@ def supervise(
         )
         return exit_code
     except TaskAlreadyRunningError:
-        # Let the executor handle this (e.g., Celery will ignore it)
-        log.info("Exiting due to broker redelivery", task_instance_id=str(ti.id))
+        # Let the executor handle this
+        log.info("Task is already running elsewhere, exiting", task_instance_id=str(ti.id))
         raise
     finally:
         if log_path and log_file_descriptor:
