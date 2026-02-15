@@ -41,6 +41,7 @@ from airflow.sdk import (
     IdentityMapper,
     MultipleCronTriggerTimetable,
     PartitionMapper,
+    SequenceMapper,
 )
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions.asset import AssetRef
@@ -356,6 +357,7 @@ class _Serializer:
 
     BUILTIN_PARTITION_MAPPERS: dict[type, str] = {
         IdentityMapper: "airflow.partition_mapper.identity.IdentityMapper",
+        SequenceMapper: "airflow.partition_mapper.sequence.SequenceMapper",
     }
 
     @functools.singledispatchmethod
@@ -369,6 +371,10 @@ class _Serializer:
     @serialize_partition_mapper.register
     def _(self, partition_mapper: IdentityMapper) -> dict[str, Any]:
         return {}
+
+    @serialize_partition_mapper.register
+    def _(self, partition_mapper: SequenceMapper) -> dict[str, Any]:
+        return {"sequence": partition_mapper.sequence}
 
 
 _serializer = _Serializer()

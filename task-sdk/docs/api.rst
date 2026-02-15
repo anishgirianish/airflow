@@ -185,6 +185,8 @@ Timetables
 
 .. autoapiclass:: airflow.sdk.IdentityMapper
 
+.. autoapiclass:: airflow.sdk.SequenceMapper
+
 .. autoapiclass:: airflow.sdk.MultipleCronTriggerTimetable
 
 .. autoapiclass:: airflow.sdk.PartitionMapper

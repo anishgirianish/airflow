@@ -58,6 +58,7 @@ from airflow.sdk.definitions.edges import EdgeModifier as EdgeModifier, Label as
 from airflow.sdk.definitions.param import Param as Param
 from airflow.sdk.definitions.partition_mapper.base import PartitionMapper
 from airflow.sdk.definitions.partition_mapper.identity import IdentityMapper
+from airflow.sdk.definitions.partition_mapper.sequence import SequenceMapper
 from airflow.sdk.definitions.taskgroup import TaskGroup as TaskGroup
 from airflow.sdk.definitions.template import literal as literal
 from airflow.sdk.definitions.timetables.assets import (
@@ -118,6 +119,7 @@ __all__ = [
     "PartitionedAssetTimetable",
     "PartitionMapper",
     "SecretCache",
+    "SequenceMapper",
     "TaskGroup",
     "TaskInstanceState",
     "TriggerRule",
