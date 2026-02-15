@@ -440,7 +440,7 @@ def ensure_serialized_deadline_alert(obj: DeadlineAlert | SerializedDeadlineAler
     return decode_deadline_alert(encode_deadline_alert(obj))
 
 
-def encode_partition_mapper(var: PartitionMapper) -> dict[str, Any]:
+def encode_partition_mapper(var: PartitionMapper | CorePartitionMapper) -> dict[str, Any]:
     """
     Encode a PartitionMapper instance.
 
