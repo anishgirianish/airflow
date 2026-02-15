@@ -41,6 +41,7 @@ from airflow.sdk import (
     IdentityMapper,
     MultipleCronTriggerTimetable,
     PartitionMapper,
+    ProductMapper,
 )
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions.asset import AssetRef
@@ -64,6 +65,7 @@ from airflow.serialization.enums import DagAttributeTypes as DAT, Encoding
 from airflow.serialization.helpers import (
     find_registered_custom_partition_mapper,
     find_registered_custom_timetable,
+    is_core_partition_mapper_import_path,
     is_core_timetable_import_path,
 )
 from airflow.timetables.base import Timetable as CoreTimetable
@@ -356,6 +358,7 @@ class _Serializer:
 
     BUILTIN_PARTITION_MAPPERS: dict[type, str] = {
         IdentityMapper: "airflow.partition_mapper.identity.IdentityMapper",
+        ProductMapper: "airflow.partition_mapper.product.ProductMapper",
     }
 
     @functools.singledispatchmethod
@@ -369,6 +372,10 @@ class _Serializer:
     @serialize_partition_mapper.register
     def _(self, partition_mapper: IdentityMapper) -> dict[str, Any]:
         return {}
+
+    @serialize_partition_mapper.register
+    def _(self, partition_mapper: ProductMapper) -> dict[str, Any]:
+        return {"mappers": [encode_partition_mapper(m) for m in partition_mapper.mappers]}
 
 
 _serializer = _Serializer()
@@ -443,9 +450,9 @@ def encode_partition_mapper(var: PartitionMapper) -> dict[str, Any]:
     :meta private:
     """
     if (importable_string := _serializer.BUILTIN_PARTITION_MAPPERS.get(var_type := type(var), None)) is None:
-        find_registered_custom_partition_mapper(
-            importable_string := qualname(var_type)
-        )  # This raises if not found.
+        importable_string = qualname(var_type)
+        if not is_core_partition_mapper_import_path(importable_string):
+            find_registered_custom_partition_mapper(importable_string)  # This raises if not found.
     return {
         Encoding.TYPE: importable_string,
         Encoding.VAR: _serializer.serialize_partition_mapper(var),

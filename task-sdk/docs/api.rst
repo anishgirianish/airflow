@@ -191,6 +191,8 @@ Timetables
 
 .. autoapiclass:: airflow.sdk.PartitionedAssetTimetable
 
+.. autoapiclass:: airflow.sdk.ProductMapper
+
 
 I/O Helpers
 -----------

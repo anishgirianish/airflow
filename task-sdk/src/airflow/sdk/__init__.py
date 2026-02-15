@@ -56,6 +56,7 @@ __all__ = [
     "PartitionedAssetTimetable",
     "PartitionMapper",
     "PokeReturnValue",
+    "ProductMapper",
     "SyncCallback",
     "TaskGroup",
     "TaskInstanceState",
@@ -110,6 +111,7 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.param import Param, ParamsDict
     from airflow.sdk.definitions.partition_mapper.base import PartitionMapper
     from airflow.sdk.definitions.partition_mapper.identity import IdentityMapper
+    from airflow.sdk.definitions.partition_mapper.product import ProductMapper
     from airflow.sdk.definitions.taskgroup import TaskGroup
     from airflow.sdk.definitions.template import literal
     from airflow.sdk.definitions.timetables.assets import (
@@ -172,6 +174,7 @@ __lazy_imports: dict[str, str] = {
     "PartitionedAssetTimetable": ".definitions.timetables.assets",
     "PartitionMapper": ".definitions.partition_mapper.base",
     "PokeReturnValue": ".bases.sensor",
+    "ProductMapper": ".definitions.partition_mapper.product",
     "SecretCache": ".execution_time.cache",
     "SyncCallback": ".definitions.callback",
     "TaskGroup": ".definitions.taskgroup",
