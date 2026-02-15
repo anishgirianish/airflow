@@ -834,6 +834,31 @@ def test_decode_partition_mapper_not_exists():
         decode_partition_mapper({Encoding.TYPE: "not_exists", Encoding.VAR: {}})
 
 
+def test_encode_sequence_mapper():
+    from airflow.sdk import SequenceMapper
+    from airflow.serialization.encoders import encode_partition_mapper
+
+    partition_mapper = SequenceMapper(["us", "eu", "apac"])
+    assert encode_partition_mapper(partition_mapper) == {
+        Encoding.TYPE: "airflow.partition_mappers.sequence.SequenceMapper",
+        Encoding.VAR: {"sequence": ["us", "eu", "apac"]},
+    }
+
+
+def test_decode_sequence_mapper():
+    from airflow.partition_mappers.sequence import SequenceMapper as CoreSequenceMapper
+    from airflow.sdk import SequenceMapper
+    from airflow.serialization.decoders import decode_partition_mapper
+    from airflow.serialization.encoders import encode_partition_mapper
+
+    partition_mapper = SequenceMapper(["us", "eu", "apac"])
+    encoded_pm = encode_partition_mapper(partition_mapper)
+    core_pm = decode_partition_mapper(encoded_pm)
+
+    assert isinstance(core_pm, CoreSequenceMapper)
+    assert core_pm.sequence == ["us", "eu", "apac"]
+
+
 class TestSerializedBaseOperator:
     # ensure the default logging config is used for this test, no matter what ran before
     @pytest.mark.usefixtures("reset_logging_config")
