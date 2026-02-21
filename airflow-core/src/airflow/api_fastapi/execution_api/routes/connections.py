@@ -21,7 +21,9 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
+from sqlalchemy import select
 
+from airflow.api_fastapi.common.db.common import AsyncSessionDep
 from airflow.api_fastapi.execution_api.datamodels.connection import ConnectionResponse
 from airflow.api_fastapi.execution_api.deps import JWTBearerDep, get_team_name_dep
 from airflow.exceptions import AirflowNotFoundException
@@ -31,15 +33,32 @@ from airflow.models.connection import Connection
 async def has_connection_access(
     connection_id: str = Path(),
     token=JWTBearerDep,
+    task_team: Annotated[str | None, Depends(get_team_name_dep)] = None,
+    session: AsyncSessionDep = None,
 ) -> bool:
     """Check if the task has access to the connection."""
-    # TODO: Placeholder for actual implementation
-
     log.debug(
         "Checking access for task instance with key '%s' to connection '%s'",
         token.id,
         connection_id,
     )
+    if task_team is None:
+        return True
+
+    resource_team = await session.scalar(
+        select(Connection.team_name).where(Connection.conn_id == connection_id)
+    )
+    if resource_team is None:
+        return True
+
+    if task_team != resource_team:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "access_denied",
+                "message": f"Task does not have access to connection '{connection_id}'",
+            },
+        )
     return True
 
 

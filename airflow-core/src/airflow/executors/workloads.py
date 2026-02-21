@@ -21,7 +21,7 @@ import uuid
 from abc import ABC
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import structlog
 from pydantic import BaseModel, Field
@@ -44,8 +44,13 @@ class BaseWorkload(BaseModel):
     """The identity token for this workload"""
 
     @staticmethod
-    def generate_token(sub_id: str, generator: JWTGenerator | None = None) -> str:
-        return generator.generate({"sub": sub_id}) if generator else ""
+    def generate_token(
+        sub_id: str, generator: JWTGenerator | None = None, extras: dict[str, Any] | None = None
+    ) -> str:
+        claims: dict[str, Any] = {"sub": sub_id}
+        if extras:
+            claims.update(extras)
+        return generator.generate(claims) if generator else ""
 
 
 class BundleInfo(BaseModel):
@@ -139,7 +144,7 @@ class ExecuteTask(BaseDagBundleWorkload):
         return cls(
             ti=ser_ti,
             dag_rel_path=dag_rel_path or Path(ti.dag_model.relative_fileloc or ""),
-            token=cls.generate_token(str(ti.id), generator),
+            token=cls.generate_token(str(ti.id), generator, extras={"dag_id": ser_ti.dag_id}),
             log_path=fname,
             bundle_info=bundle_info,
             sentry_integration=sentry_integration,

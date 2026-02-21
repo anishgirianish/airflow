@@ -17,12 +17,14 @@
 
 from __future__ import annotations
 
+import os
 from unittest import mock
 
 import pytest
 from fastapi import FastAPI, HTTPException, status
 
 from airflow.models.connection import Connection
+from airflow.models.team import Team
 
 pytestmark = pytest.mark.db_test
 
@@ -128,3 +130,52 @@ class TestGetConnection:
                 "message": "Task does not have access to connection test_conn",
             }
         }
+
+
+@mock.patch.dict(os.environ, {"AIRFLOW__CORE__MULTI_TEAM": "True"})
+class TestConnectionTeamAccess:
+    @pytest.mark.parametrize(
+        ("task_team", "resource_team", "expect_denied"),
+        [
+            pytest.param(None, "team-a", False, id="multi-team-disabled"),
+            pytest.param("team-a", "team-a", False, id="same-team"),
+            pytest.param("team-a", "team-b", True, id="cross-team-denied"),
+            pytest.param("team-a", None, False, id="global-resource"),
+        ],
+    )
+    def test_connection_team_boundary(self, client, session, task_team, resource_team, expect_denied):
+        from airflow.api_fastapi.execution_api.deps import get_team_name_dep
+
+        # Create teams referenced by the test
+        for team_name in {task_team, resource_team} - {None}:
+            session.merge(Team(name=team_name))
+        session.flush()
+
+        connection = Connection(
+            conn_id="team_conn",
+            conn_type="http",
+            host="localhost",
+            team_name=resource_team,
+        )
+        session.add(connection)
+        session.commit()
+
+        last_route = client.app.routes[-1]
+        assert isinstance(last_route.app, FastAPI)
+        exec_app = last_route.app
+
+        async def override_team_name():
+            return task_team
+
+        exec_app.dependency_overrides[get_team_name_dep] = override_team_name
+        try:
+            response = client.get("/execution/connections/team_conn")
+            if expect_denied:
+                assert response.status_code == 403
+                assert response.json()["detail"]["reason"] == "access_denied"
+            else:
+                assert response.status_code != 403
+        finally:
+            exec_app.dependency_overrides = {}
+            session.delete(connection)
+            session.commit()

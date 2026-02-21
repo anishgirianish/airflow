@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from unittest import mock
 
 import pytest
@@ -25,6 +26,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.routing import Mount
 from sqlalchemy import select
 
+from airflow.models.team import Team
 from airflow.models.variable import Variable
 
 from tests_common.test_utils.db import clear_db_variables
@@ -276,3 +278,47 @@ class TestDeleteVariable:
 
         vars = session.scalars(select(Variable)).all()
         assert len(vars) == 1
+
+
+@mock.patch.dict(os.environ, {"AIRFLOW__CORE__MULTI_TEAM": "True"})
+class TestVariableTeamAccess:
+    @pytest.mark.parametrize(
+        ("task_team", "resource_team", "expect_denied"),
+        [
+            pytest.param(None, "team-a", False, id="multi-team-disabled"),
+            pytest.param("team-a", "team-a", False, id="same-team"),
+            pytest.param("team-a", "team-b", True, id="cross-team-denied"),
+            pytest.param("team-a", None, False, id="global-resource"),
+        ],
+    )
+    def test_variable_team_boundary(self, client, session, task_team, resource_team, expect_denied):
+        from airflow.api_fastapi.execution_api.deps import get_team_name_dep
+
+        # Create teams referenced by the test
+        for team_name in {task_team, resource_team} - {None}:
+            session.merge(Team(name=team_name))
+        session.flush()
+
+        Variable.set(key="team_var", value="val", session=session)
+        var = session.scalars(select(Variable).where(Variable.key == "team_var")).first()
+        var.team_name = resource_team
+        session.commit()
+
+        last_route = client.app.routes[-1]
+        assert isinstance(last_route, Mount)
+        assert isinstance(last_route.app, FastAPI)
+        exec_app = last_route.app
+
+        async def override_team_name():
+            return task_team
+
+        exec_app.dependency_overrides[get_team_name_dep] = override_team_name
+        try:
+            response = client.get("/execution/variables/team_var")
+            if expect_denied:
+                assert response.status_code == 403
+                assert response.json()["detail"]["reason"] == "access_denied"
+            else:
+                assert response.status_code != 403
+        finally:
+            exec_app.dependency_overrides = {}

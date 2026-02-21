@@ -21,7 +21,9 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
+from sqlalchemy import select
 
+from airflow.api_fastapi.common.db.common import AsyncSessionDep
 from airflow.api_fastapi.execution_api.datamodels.variable import (
     VariablePostBody,
     VariableResponse,
@@ -34,16 +36,33 @@ async def has_variable_access(
     request: Request,
     variable_key: str = Path(),
     token=JWTBearerDep,
+    task_team: Annotated[str | None, Depends(get_team_name_dep)] = None,
+    session: AsyncSessionDep = None,
 ):
     """Check if the task has access to the variable."""
     write = request.method not in {"GET", "HEAD", "OPTIONS"}
-    # TODO: Placeholder for actual implementation
     log.debug(
         "Checking %s access for task instance with key '%s' to variable '%s'",
         "write" if write else "read",
         token.id,
         variable_key,
     )
+    # task_team is None when multi_team is disabled (get_team_name_dep handles this)
+    if task_team is None:
+        return True
+
+    resource_team = await session.scalar(select(Variable.team_name).where(Variable.key == variable_key))
+    if resource_team is None:
+        return True
+
+    if task_team != resource_team:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "access_denied",
+                "message": f"Task does not have access to variable '{variable_key}'",
+            },
+        )
     return True
 
 

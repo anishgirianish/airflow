@@ -117,3 +117,17 @@ async def get_team_name_dep(session: AsyncSessionDep, token=JWTBearerDep) -> str
         .where(TaskInstance.id == token.id)
     )
     return await session.scalar(stmt)
+
+
+async def get_dag_team_name(session: AsyncSessionDep, dag_id: str) -> str | None:
+    """Resolve the team name for a DAG via its bundle."""
+    if not conf.getboolean("core", "multi_team"):
+        return None
+
+    stmt = (
+        select(Team.name)
+        .join(DagBundleModel.teams)
+        .join(DagModel, DagModel.bundle_name == DagBundleModel.name)
+        .where(DagModel.dag_id == dag_id)
+    )
+    return await session.scalar(stmt)

@@ -46,6 +46,26 @@ def test_sentry_integration():
     assert not BaseExecutor.sentry_integration
 
 
+def test_generate_token_with_extras():
+    generator = mock.Mock()
+    generator.generate.return_value = "token"
+
+    result = workloads.BaseWorkload.generate_token("sub-id", generator, extras={"dag_id": "my_dag"})
+
+    assert result == "token"
+    generator.generate.assert_called_once_with({"sub": "sub-id", "dag_id": "my_dag"})
+
+
+def test_generate_token_without_extras():
+    generator = mock.Mock()
+    generator.generate.return_value = "token"
+
+    result = workloads.BaseWorkload.generate_token("sub-id", generator)
+
+    assert result == "token"
+    generator.generate.assert_called_once_with({"sub": "sub-id"})
+
+
 def test_is_local_default_value():
     assert not BaseExecutor.is_local
 

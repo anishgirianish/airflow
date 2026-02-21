@@ -48,6 +48,7 @@ def client(request: pytest.FixtureRequest):
                     "exp": 9999999999,  # Far future expiration
                     "iat": 1000000000,  # Past issuance time
                     "aud": "test-audience",
+                    "dag_id": "dag",
                 }
 
             # For other cases (like JWTBearerDep) where no specific validators are provided
@@ -57,6 +58,7 @@ def client(request: pytest.FixtureRequest):
                 "exp": 9999999999,  # Far future expiration
                 "iat": 1000000000,  # Past issuance time
                 "aud": "test-audience",
+                "dag_id": "dag",
             }
 
         # Set the side_effect for avalidated_claims

@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import urllib.parse
+from unittest import mock
 
 import httpx
 import pytest
@@ -597,3 +598,106 @@ class TestXComsDeleteEndpoint:
             )
         ).first()
         assert xcom_ti is not None
+
+
+class TestXComWriteOwnership:
+    """Test that tasks can only write XComs for their own DAG (via dag_id in JWT)."""
+
+    def test_xcom_write_own_dag(self, client, create_task_instance, session):
+        """Task can write XComs for its own DAG."""
+        ti = create_task_instance()
+        session.commit()
+
+        response = client.post(
+            f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/xcom_key",
+            json='"value"',
+        )
+        assert response.status_code == 201
+
+    def test_xcom_write_cross_dag_denied(self, client):
+        """Task cannot write XComs for a different DAG."""
+        # Default JWT has dag_id="dag", but URL references "other_dag"
+        response = client.post(
+            "/execution/xcoms/other_dag/run/task/xcom_key",
+            json='"value"',
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["reason"] == "access_denied"
+        assert response.json()["detail"]["message"] == "Task can only write XComs for its own DAG"
+
+    def test_xcom_delete_cross_dag_denied(self, client):
+        """Task cannot delete XComs for a different DAG."""
+        response = client.delete("/execution/xcoms/other_dag/run/task/xcom_key")
+        assert response.status_code == 403
+        assert response.json()["detail"]["reason"] == "access_denied"
+
+    def test_xcom_read_cross_dag_allowed(self, client, create_task_instance, session):
+        """Task can read XComs from a different DAG (write ownership only restricts writes)."""
+        ti = create_task_instance()
+        x = XComModel(
+            key="xcom_1",
+            value="val",
+            dag_run_id=ti.dag_run.id,
+            run_id=ti.run_id,
+            task_id=ti.task_id,
+            dag_id=ti.dag_id,
+        )
+        session.add(x)
+        session.commit()
+
+        # GET uses the TI's actual dag_id, so it will match the JWT; this just confirms
+        # the read path doesn't enforce write ownership
+        response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/xcom_1")
+        assert response.status_code == 200
+
+
+class TestXComTeamAccess:
+    """Test team boundary enforcement for XCom access."""
+
+    @pytest.mark.parametrize(
+        ("task_team", "target_team", "expect_denied"),
+        [
+            pytest.param(None, "team-a", False, id="multi-team-disabled"),
+            pytest.param("team-a", "team-a", False, id="same-team"),
+            pytest.param("team-a", "team-b", True, id="cross-team-read-denied"),
+            pytest.param("team-a", None, False, id="no-team-dag"),
+        ],
+    )
+    def test_xcom_team_boundary_read(
+        self, client, create_task_instance, session, task_team, target_team, expect_denied
+    ):
+        from airflow.api_fastapi.execution_api.deps import get_team_name_dep
+
+        ti = create_task_instance()
+        x = XComModel(
+            key="xcom_team",
+            value="val",
+            dag_run_id=ti.dag_run.id,
+            run_id=ti.run_id,
+            task_id=ti.task_id,
+            dag_id=ti.dag_id,
+        )
+        session.add(x)
+        session.commit()
+
+        last_route = client.app.routes[-1]
+        assert isinstance(last_route.app, FastAPI)
+        exec_app = last_route.app
+
+        async def override_team_name():
+            return task_team
+
+        exec_app.dependency_overrides[get_team_name_dep] = override_team_name
+        try:
+            with mock.patch(
+                "airflow.api_fastapi.execution_api.routes.xcoms.get_dag_team_name",
+                return_value=target_team,
+            ):
+                response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/xcom_team")
+                if expect_denied:
+                    assert response.status_code == 403
+                    assert response.json()["detail"]["reason"] == "access_denied"
+                else:
+                    assert response.status_code != 403
+        finally:
+            exec_app.dependency_overrides = {}

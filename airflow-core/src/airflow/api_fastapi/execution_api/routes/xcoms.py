@@ -25,14 +25,14 @@ from pydantic import JsonValue
 from sqlalchemy import delete
 from sqlalchemy.sql.selectable import Select
 
-from airflow.api_fastapi.common.db.common import SessionDep
+from airflow.api_fastapi.common.db.common import AsyncSessionDep, SessionDep
 from airflow.api_fastapi.core_api.base import BaseModel
 from airflow.api_fastapi.execution_api.datamodels.xcom import (
     XComResponse,
     XComSequenceIndexResponse,
     XComSequenceSliceResponse,
 )
-from airflow.api_fastapi.execution_api.deps import JWTBearerDep
+from airflow.api_fastapi.execution_api.deps import JWTBearerDep, get_dag_team_name, get_team_name_dep
 from airflow.models.taskmap import TaskMap
 from airflow.models.xcom import XComModel
 from airflow.utils.db import get_query_count
@@ -45,18 +45,47 @@ async def has_xcom_access(
     xcom_key: Annotated[str, Path(alias="key", min_length=1)],
     request: Request,
     token=JWTBearerDep,
+    task_team: Annotated[str | None, Depends(get_team_name_dep)] = None,
+    session: AsyncSessionDep = None,
 ) -> bool:
     """Check if the task has access to the XCom."""
-    # TODO: Placeholder for actual implementation
-
     write = request.method not in {"GET", "HEAD", "OPTIONS"}
 
     log.debug(
-        "Checking %s XCom access for xcom from TaskInstance with key '%s' to XCom '%s'",
+        "Checking %s XCom access for task instance with key '%s' to XCom '%s'",
         "write" if write else "read",
         token.id,
         xcom_key,
     )
+
+    # Write ownership: task can only write/delete its own DAG's XComs
+    if write:
+        token_dag_id = token.claims.get("dag_id")
+        if token_dag_id and token_dag_id != dag_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "reason": "access_denied",
+                    "message": "Task can only write XComs for its own DAG",
+                },
+            )
+
+    # Team boundary (skipped when multi_team disabled — task_team will be None)
+    if task_team is None:
+        return True
+
+    target_team = await get_dag_team_name(session, dag_id)
+    if target_team is None:
+        return True
+
+    if task_team != target_team:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "access_denied",
+                "message": f"Task does not have access to XComs of DAG '{dag_id}'",
+            },
+        )
     return True
 
 
