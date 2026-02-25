@@ -2526,7 +2526,7 @@ export type TestConnectionAsyncData = {
 export type TestConnectionAsyncResponse = ConnectionTestQueuedResponse;
 
 export type GetConnectionTestStatusData = {
-    token: string;
+    connectionTestToken: string;
 };
 
 export type GetConnectionTestStatusResponse = ConnectionTestStatusResponse;
@@ -4537,7 +4537,7 @@ export type $OpenApiTs = {
             };
         };
     };
-    '/api/v2/connections/test-async/{token}': {
+    '/api/v2/connections/test-async/{connection_test_token}': {
         get: {
             req: GetConnectionTestStatusData;
             res: {
