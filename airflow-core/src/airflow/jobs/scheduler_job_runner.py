@@ -3090,7 +3090,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
         for ct in pending_tests:
             executor = self._try_to_load_executor(ct, session)
-            if executor is not None and not executor.supports_connection_test:
+            if executor is not None and "TestConnection" not in executor.supported_workload_types:
                 executor = None
             if executor is None:
                 reason = (

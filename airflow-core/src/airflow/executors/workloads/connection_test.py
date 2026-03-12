@@ -39,6 +39,10 @@ class TestConnection(BaseWorkloadSchema):
 
     type: Literal["TestConnection"] = Field(init=False, default="TestConnection")
 
+    @property
+    def queue_key(self) -> str:
+        return str(self.connection_test_id)
+
     @classmethod
     def make(
         cls,

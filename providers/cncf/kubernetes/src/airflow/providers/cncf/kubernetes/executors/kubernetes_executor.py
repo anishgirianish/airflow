@@ -231,14 +231,6 @@ class KubernetesExecutor(BaseExecutor):
         # try and remove it from the QUEUED state while we process it
         self.last_handled[key] = time.time()
 
-    def queue_workload(self, workload: workloads.All, session: Session | None) -> None:
-        from airflow.executors import workloads
-
-        if not isinstance(workload, workloads.ExecuteTask):
-            raise RuntimeError(f"{type(self)} cannot handle workloads of type {type(workload)}")
-        ti = workload.ti
-        self.queued_tasks[ti.key] = workload
-
     def _process_workloads(self, workloads: Sequence[workloads.All]) -> None:
         from airflow.executors.workloads import ExecuteTask
 
@@ -253,7 +245,7 @@ class KubernetesExecutor(BaseExecutor):
             queue = w.ti.queue
             executor_config = w.ti.executor_config or {}
 
-            del self.queued_tasks[key]
+            del self.executor_queues["ExecuteTask"][key]
             self.execute_async(key=key, command=command, queue=queue, executor_config=executor_config)
             self.running.add(key)
 
@@ -268,8 +260,8 @@ class KubernetesExecutor(BaseExecutor):
 
         if self.running:
             self.log.debug("self.running: %s", self.running)
-        if self.queued_tasks:
-            self.log.debug("self.queued: %s", self.queued_tasks)
+        if self.executor_queues["ExecuteTask"]:
+            self.log.debug("self.queued: %s", self.executor_queues["ExecuteTask"])
         self.kube_scheduler.sync()
 
         last_resource_version: dict[str, str] = defaultdict(lambda: "0")
@@ -594,7 +586,7 @@ class KubernetesExecutor(BaseExecutor):
             assert self.kube_client
             assert self.kube_scheduler
         self.running.discard(ti.key)
-        self.queued_tasks.pop(ti.key, None)
+        self.executor_queues["ExecuteTask"].pop(ti.key, None)
         pod_combined_search_str_to_pod_map = self.get_pod_combined_search_str_to_pod_map()
         # Build the pod selector
         base_label_selector = f"dag_id={ti.dag_id},task_id={ti.task_id}"

@@ -53,7 +53,7 @@ class TestEdgeExecutor:
         ti.dag_run.run_id = key.run_id
         ti.dag_run.start_date = datetime(2021, 1, 1)
         executor = EdgeExecutor()
-        executor.queued_tasks = {key: [None, None, None, ti]}
+        executor.executor_queues["ExecuteTask"] = {key: [None, None, None, ti]}
 
         return (executor, key)
 
@@ -283,7 +283,7 @@ class TestEdgeExecutor:
 
         # Add task to executor's internal state
         executor.running.add(key)
-        executor.queued_tasks[key] = [None, None, None, ti]
+        executor.executor_queues["ExecuteTask"][key] = [None, None, None, ti]
         executor.last_reported_state[key] = TaskInstanceState.QUEUED
 
         # Add corresponding job to database
@@ -313,7 +313,7 @@ class TestEdgeExecutor:
 
         # Verify task is removed from executor's internal state
         assert key not in executor.running
-        assert key not in executor.queued_tasks
+        assert key not in executor.executor_queues["ExecuteTask"]
         assert key not in executor.last_reported_state
 
         # Verify job is removed from database
@@ -346,4 +346,4 @@ class TestEdgeExecutor:
 
         # Verify nothing breaks
         assert key not in executor.running
-        assert key not in executor.queued_tasks
+        assert key not in executor.executor_queues["ExecuteTask"]

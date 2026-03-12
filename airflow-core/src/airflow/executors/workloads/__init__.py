@@ -22,7 +22,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from airflow.executors.workloads.base import BaseWorkload, BundleInfo
+from airflow.executors.workloads.base import WORKLOAD_TYPE_TIER, BaseWorkload, BundleInfo
 from airflow.executors.workloads.callback import CallbackFetchMethod, ExecuteCallback
 from airflow.executors.workloads.connection_test import TestConnection
 from airflow.executors.workloads.task import ExecuteTask, TaskInstanceDTO
@@ -45,4 +45,5 @@ __all__ = [
     "TaskInstance",
     "TaskInstanceDTO",
     "TestConnection",
+    "WORKLOAD_TYPE_TIER",
 ]

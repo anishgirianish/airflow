@@ -75,6 +75,10 @@ class ExecuteCallback(BaseDagBundleWorkload):
 
     type: Literal["ExecuteCallback"] = Field(init=False, default="ExecuteCallback")
 
+    @property
+    def queue_key(self) -> str:
+        return self.callback.id
+
     @classmethod
     def make(
         cls,

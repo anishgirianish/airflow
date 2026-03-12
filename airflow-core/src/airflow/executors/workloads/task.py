@@ -73,6 +73,14 @@ class ExecuteTask(BaseDagBundleWorkload):
 
     type: Literal["ExecuteTask"] = Field(init=False, default="ExecuteTask")
 
+    @property
+    def queue_key(self) -> TaskInstanceKey:
+        return self.ti.key
+
+    @property
+    def sort_key(self) -> int:
+        return self.ti.priority_weight
+
     @classmethod
     def make(
         cls,

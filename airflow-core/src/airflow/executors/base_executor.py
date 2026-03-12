@@ -141,7 +141,7 @@ class BaseExecutor(LoggingMixin):
     """
 
     supports_ad_hoc_ti_run: bool = False
-    supports_callbacks: bool = False
+    supported_workload_types: frozenset[str] = frozenset({"ExecuteTask"})
     supports_multi_team: bool = False
     supports_connection_test: bool = False
     sentry_integration: str = ""
@@ -185,9 +185,7 @@ class BaseExecutor(LoggingMixin):
 
         self.parallelism: int = parallelism
         self.team_name: str | None = team_name
-        self.queued_tasks: dict[TaskInstanceKey, workloads.ExecuteTask] = {}
-        self.queued_callbacks: dict[str, workloads.ExecuteCallback] = {}
-        self.queued_connection_tests: dict[str, workloads.TestConnection] = {}
+        self.executor_queues: dict[str, dict] = defaultdict(dict)
         self.running: set[WorkloadKey] = set()
         self.event_buffer: dict[WorkloadKey, EventBufferValueType] = {}
         self._task_event_logs: deque[Log] = deque()
@@ -222,55 +220,29 @@ class BaseExecutor(LoggingMixin):
         self._task_event_logs.append(Log(event=event, task_instance=ti_key, extra=extra))
 
     def queue_workload(self, workload: workloads.All, session: Session) -> None:
-        if isinstance(workload, workloads.ExecuteTask):
-            ti = workload.ti
-            self.queued_tasks[ti.key] = workload
-        elif isinstance(workload, workloads.ExecuteCallback):
-            if not self.supports_callbacks:
-                raise NotImplementedError(
-                    f"{type(self).__name__} does not support ExecuteCallback workloads. "
-                    f"Set supports_callbacks = True and implement callback handling in _process_workloads(). "
-                    f"See LocalExecutor or CeleryExecutor for reference implementation."
-                )
-            self.queued_callbacks[workload.callback.id] = workload
-        elif isinstance(workload, workloads.TestConnection):
-            if not self.supports_connection_test:
-                raise NotImplementedError(
-                    f"{type(self).__name__} does not support TestConnection workloads. "
-                    f"Set supports_connection_test = True and implement connection test handling "
-                    f"in _process_workloads(). See LocalExecutor for reference implementation."
-                )
-            self.queued_connection_tests[str(workload.connection_test_id)] = workload
-        else:
-            raise ValueError(
-                f"Un-handled workload type {type(workload).__name__!r} in {type(self).__name__}. "
-                f"Workload must be one of: ExecuteTask, ExecuteCallback, TestConnection."
+        if workload.type not in self.supported_workload_types:
+            raise NotImplementedError(
+                f"{type(self).__name__} does not support {workload.type} workloads. "
+                f"Add {workload.type!r} to supported_workload_types and implement "
+                f"handling in _process_workloads()."
             )
+        self.executor_queues[workload.type][workload.queue_key] = workload
 
     def _get_workloads_to_schedule(self, open_slots: int) -> list[tuple[WorkloadKey, workloads.All]]:
         """
         Select and return the next batch of workloads to schedule, respecting priority policy.
 
-        Priority Policy: Callbacks are scheduled before tasks (callbacks complete existing work).
-        Callbacks are processed in FIFO order. Tasks are sorted by priority_weight (higher priority first).
+        Workloads are sorted by ``WORKLOAD_TYPE_TIER`` (tier assigned by workload type) first,
+        then by ``sort_key`` within the same tier.  Lower tier values are scheduled first;
+        within the same tier, lower ``sort_key`` values come first (``sort_key=0`` gives FIFO).
 
         :param open_slots: Number of available execution slots
         """
-        workloads_to_schedule: list[tuple[WorkloadKey, workloads.All]] = []
-
-        if self.queued_callbacks:
-            for key, workload in self.queued_callbacks.items():
-                if len(workloads_to_schedule) >= open_slots:
-                    break
-                workloads_to_schedule.append((key, workload))
-
-        if open_slots > len(workloads_to_schedule) and self.queued_tasks:
-            for task_key, task_workload in self.order_queued_tasks_by_priority():
-                if len(workloads_to_schedule) >= open_slots:
-                    break
-                workloads_to_schedule.append((task_key, task_workload))
-
-        return workloads_to_schedule
+        all_workloads: list[tuple[WorkloadKey, workloads.All]] = [
+            (key, workload) for queue in self.executor_queues.values() for key, workload in queue.items()
+        ]
+        all_workloads.sort(key=lambda item: (workloads.WORKLOAD_TYPE_TIER[item[1].type], item[1].sort_key))
+        return all_workloads[:open_slots]
 
     def _process_workloads(self, workloads: Sequence[workloads.All]) -> None:
         """
@@ -292,9 +264,9 @@ class BaseExecutor(LoggingMixin):
         :return: True if the task is known to this executor
         """
         return (
-            task_instance.id in self.queued_tasks
+            task_instance.id in self.executor_queues["ExecuteTask"]
             or task_instance.id in self.running
-            or task_instance.key in self.queued_tasks
+            or task_instance.key in self.executor_queues["ExecuteTask"]
             or task_instance.key in self.running
         )
 
@@ -310,10 +282,10 @@ class BaseExecutor(LoggingMixin):
         open_slots = self.parallelism - len(self.running)
 
         num_running_workloads = len(self.running)
-        num_queued_workloads = len(self.queued_tasks) + len(self.queued_callbacks)
+        num_queued_workloads = sum(len(q) for q in self.executor_queues.values())
 
         self._emit_metrics(open_slots, num_running_workloads, num_queued_workloads)
-        self.trigger_tasks(open_slots)
+        self.trigger_workloads(open_slots)
 
         self.trigger_connection_tests()
 
@@ -373,27 +345,11 @@ class BaseExecutor(LoggingMixin):
             tags={"status": "running", "name": name},
         )
 
-    def order_queued_tasks_by_priority(self) -> list[tuple[TaskInstanceKey, workloads.ExecuteTask]]:
+    def trigger_workloads(self, open_slots: int) -> None:
         """
-        Orders the queued tasks by priority.
+        Initiate async execution of queued workloads, up to the number of available slots.
 
-        :return: List of workloads from the queued_tasks according to the priority.
-        """
-        if not self.queued_tasks:
-            return []
-
-        # V3 + new executor that supports workloads
-        return sorted(
-            self.queued_tasks.items(),
-            key=lambda x: x[1].ti.priority_weight,
-            reverse=False,
-        )
-
-    def trigger_tasks(self, open_slots: int) -> None:
-        """
-        Initiate async execution of queued workloads (tasks and callbacks), up to the number of available slots.
-
-        Callbacks are prioritized over tasks to complete existing work before starting new work.
+        Workloads are scheduled according to their ``WORKLOAD_TYPE_TIER`` and ``sort_key``.
 
         :param open_slots: Number of open slots
         """
@@ -547,38 +503,24 @@ class BaseExecutor(LoggingMixin):
         return tis
 
     @property
-    def slots_available(self):
-        """Number of new workloads (tasks, callbacks, and connection tests) this executor instance can accept."""
-        return (
-            self.parallelism
-            - len(self.running)
-            - len(self.queued_tasks)
-            - len(self.queued_callbacks)
-            - len(self.queued_connection_tests)
-        )
+    def slots_occupied(self):
+        """Number of workloads this executor instance is currently managing."""
+        return len(self.running) + sum(len(q) for q in self.executor_queues.values())
 
     @property
-    def slots_occupied(self):
-        """Number of workloads (tasks, callbacks, and connection tests) this executor instance is currently managing."""
-        return (
-            len(self.running)
-            + len(self.queued_tasks)
-            + len(self.queued_callbacks)
-            + len(self.queued_connection_tests)
-        )
+    def slots_available(self):
+        """Number of new workloads this executor instance can accept."""
+        return self.parallelism - self.slots_occupied
 
     def debug_dump(self):
         """Get called in response to SIGUSR2 by the scheduler."""
-        self.log.info(
-            "executor.queued_tasks (%d)\n\t%s",
-            len(self.queued_tasks),
-            "\n\t".join(map(repr, self.queued_tasks.items())),
-        )
-        self.log.info(
-            "executor.queued_callbacks (%d)\n\t%s",
-            len(self.queued_callbacks),
-            "\n\t".join(map(repr, self.queued_callbacks.items())),
-        )
+        for workload_type, queue in self.executor_queues.items():
+            self.log.info(
+                "executor.queued[%s] (%d)\n\t%s",
+                workload_type,
+                len(queue),
+                "\n\t".join(map(repr, queue.items())),
+            )
         self.log.info("executor.running (%d)\n\t%s", len(self.running), "\n\t".join(map(repr, self.running)))
         self.log.info(
             "executor.event_buffer (%d)\n\t%s",
