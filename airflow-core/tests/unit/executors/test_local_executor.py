@@ -31,6 +31,7 @@ from airflow._shared.timezones import timezone
 from airflow.executors import workloads
 from airflow.executors.base_executor import ExecutorConf
 from airflow.executors.local_executor import LocalExecutor, _execute_connection_test, _execute_work
+from airflow.executors.workloads import WorkloadType
 from airflow.executors.workloads.base import BundleInfo
 from airflow.executors.workloads.callback import CallbackDTO
 from airflow.executors.workloads.task import TaskInstanceDTO
@@ -151,7 +152,7 @@ class TestLocalExecutor:
             )
 
             # Process queued workloads to trigger worker spawning
-            executor._process_workloads(list(executor.queued_tasks.values()))
+            executor._process_workloads(list(executor.executor_queues[WorkloadType.EXECUTE_TASK].values()))
 
             executor.end()
 
@@ -168,9 +169,9 @@ class TestLocalExecutor:
         assert executor.event_buffer[fail_ti.key][0] == State.FAILED
 
     @mock.patch("airflow.executors.local_executor.LocalExecutor.sync")
-    @mock.patch("airflow.executors.base_executor.BaseExecutor.trigger_tasks")
+    @mock.patch("airflow.executors.base_executor.BaseExecutor.trigger_workloads")
     @mock.patch("airflow.executors.base_executor.Stats.gauge")
-    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_tasks, mock_sync):
+    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_workloads, mock_sync):
         executor = LocalExecutor()
         executor.heartbeat()
         calls = [
@@ -339,9 +340,9 @@ class TestLocalExecutor:
 
 
 class TestLocalExecutorConnectionTestSupport:
-    def test_supports_connection_test_flag_is_true(self):
+    def test_supports_connection_test(self):
         executor = LocalExecutor()
-        assert executor.supports_connection_test is True
+        assert WorkloadType.TEST_CONNECTION in executor.supported_workload_types
 
 
 @mock.patch("airflow.executors.local_executor.signal", autospec=True)
@@ -577,9 +578,9 @@ class TestLocalExecutorConnectionTestExecution:
 
 
 class TestLocalExecutorCallbackSupport:
-    def test_supports_callbacks_flag_is_true(self):
+    def test_supports_callbacks(self):
         executor = LocalExecutor()
-        assert executor.supports_callbacks is True
+        assert WorkloadType.EXECUTE_CALLBACK in executor.supported_workload_types
 
     @skip_spawn_mp_start
     @mock.patch("airflow.executors.workloads.callback.execute_callback_workload")
@@ -603,9 +604,9 @@ class TestLocalExecutorCallbackSupport:
         executor.start()
 
         try:
-            executor.queued_callbacks[callback_data.id] = callback_workload
+            executor.executor_queues[WorkloadType.EXECUTE_CALLBACK][callback_data.id] = callback_workload
             executor._process_workloads([callback_workload])
-            assert len(executor.queued_callbacks) == 0
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_CALLBACK]) == 0
             # We can't easily verify worker execution without running the worker,
             # but we can verify the helper is called via mock
 

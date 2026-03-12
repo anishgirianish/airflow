@@ -38,6 +38,7 @@ import structlog
 
 from airflow.executors import workloads
 from airflow.executors.base_executor import BaseExecutor
+from airflow.executors.workloads import WorkloadType
 from airflow.executors.workloads.callback import execute_callback_workload
 from airflow.models.connection import Connection
 from airflow.models.connection_test import ConnectionTestState, run_connection_test
@@ -269,8 +270,13 @@ class LocalExecutor(BaseExecutor):
 
     supports_multi_team: bool = True
     serve_logs: bool = True
-    supports_callbacks: bool = True
-    supports_connection_test: bool = True
+    supported_workload_types: frozenset[str] = frozenset(
+        {
+            WorkloadType.EXECUTE_TASK,
+            WorkloadType.EXECUTE_CALLBACK,
+            WorkloadType.TEST_CONNECTION,
+        }
+    )
 
     activity_queue: SimpleQueue[workloads.All | None]
     result_queue: SimpleQueue[WorkloadResultType]
@@ -419,13 +425,7 @@ class LocalExecutor(BaseExecutor):
     def _process_workloads(self, workload_list):
         for workload in workload_list:
             self.activity_queue.put(workload)
-            # Remove from appropriate queue based on workload type
-            if isinstance(workload, workloads.ExecuteTask):
-                del self.queued_tasks[workload.ti.key]
-            elif isinstance(workload, workloads.ExecuteCallback):
-                del self.queued_callbacks[workload.callback.id]
-            elif isinstance(workload, workloads.TestConnection):
-                del self.queued_connection_tests[str(workload.connection_test_id)]
+            self.executor_queues[workload.type].pop(workload.queue_key, None)
         with self._unread_messages:
             self._unread_messages.value += len(workload_list)
         self._check_workers()

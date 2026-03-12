@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field
 
-from airflow.executors.workloads.base import BaseWorkloadSchema
+from airflow.executors.workloads.base import BaseWorkloadSchema, WorkloadType
 
 if TYPE_CHECKING:
     from airflow.api_fastapi.auth.tokens import JWTGenerator
@@ -37,7 +37,11 @@ class TestConnection(BaseWorkloadSchema):
     timeout: int = 60
     queue: str | None = None
 
-    type: Literal["TestConnection"] = Field(init=False, default="TestConnection")
+    type: Literal[WorkloadType.TEST_CONNECTION] = Field(init=False, default=WorkloadType.TEST_CONNECTION)
+
+    @property
+    def queue_key(self) -> str:
+        return str(self.connection_test_id)
 
     @classmethod
     def make(

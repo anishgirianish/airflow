@@ -23,6 +23,7 @@ import pytest
 
 from airflow.callbacks.callback_requests import CallbackRequest, DagCallbackRequest
 from airflow.configuration import conf
+from airflow.executors.workloads import WorkloadType
 from airflow.providers.celery.executors.celery_executor import CeleryExecutor
 from airflow.providers.celery.executors.celery_kubernetes_executor import CeleryKubernetesExecutor
 from airflow.providers.cncf.kubernetes.executors.kubernetes_executor import KubernetesExecutor
@@ -60,8 +61,8 @@ class TestCeleryKubernetesExecutor:
         celery_queued_tasks = {("dag_id", "task_id", "2020-08-30", 1): "queued_command"}
         k8s_queued_tasks = {("dag_id_2", "task_id_2", "2020-08-30", 2): "queued_command"}
 
-        celery_executor_mock.queued_tasks = celery_queued_tasks
-        k8s_executor_mock.queued_tasks = k8s_queued_tasks
+        celery_executor_mock.executor_queues = {WorkloadType.EXECUTE_TASK: celery_queued_tasks}
+        k8s_executor_mock.executor_queues = {WorkloadType.EXECUTE_TASK: k8s_queued_tasks}
 
         expected_queued_tasks = {**celery_queued_tasks, **k8s_queued_tasks}
         assert cke.queued_tasks == expected_queued_tasks

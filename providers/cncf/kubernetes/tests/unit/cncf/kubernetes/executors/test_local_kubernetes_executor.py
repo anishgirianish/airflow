@@ -24,6 +24,7 @@ import pytest
 from airflow.callbacks.callback_requests import CallbackRequest
 from airflow.configuration import conf
 from airflow.executors.local_executor import LocalExecutor
+from airflow.executors.workloads import WorkloadType
 from airflow.providers.cncf.kubernetes.executors.local_kubernetes_executor import (
     LocalKubernetesExecutor,
 )
@@ -59,8 +60,8 @@ class TestLocalKubernetesExecutor:
         local_queued_tasks = {("dag_id", "task_id", "2020-08-30", 1): "queued_command"}
         k8s_queued_tasks = {("dag_id_2", "task_id_2", "2020-08-30", 2): "queued_command"}
 
-        local_executor_mock.queued_tasks = local_queued_tasks
-        k8s_executor_mock.queued_tasks = k8s_queued_tasks
+        local_executor_mock.executor_queues = {WorkloadType.EXECUTE_TASK: local_queued_tasks}
+        k8s_executor_mock.executor_queues = {WorkloadType.EXECUTE_TASK: k8s_queued_tasks}
 
         expected_queued_tasks = {**local_queued_tasks, **k8s_queued_tasks}
 
