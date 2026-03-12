@@ -25,6 +25,7 @@ from botocore.exceptions import ClientError
 from semver import VersionInfo
 
 from airflow.executors.base_executor import BaseExecutor
+from airflow.executors.workloads.base import WorkloadType
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.providers.amazon.aws.executors.aws_lambda import lambda_executor
@@ -139,6 +140,8 @@ class TestAwsLambdaExecutor:
         executor_config = {"config_key": "config_value"}
 
         workload = mock.Mock(spec=ExecuteTask)
+        workload.type = WorkloadType.EXECUTE_TASK
+        workload.queue_key = airflow_key
         workload.ti = mock.Mock(spec=TaskInstance)
         workload.ti.key = airflow_key
         workload.ti.executor_config = executor_config
@@ -147,11 +150,11 @@ class TestAwsLambdaExecutor:
 
         mock_executor.queue_workload(workload, mock.Mock())
 
-        assert mock_executor.queued_tasks[workload.ti.key] == workload
+        assert mock_executor.executor_queues[WorkloadType.EXECUTE_TASK][workload.ti.key] == workload
         assert len(mock_executor.pending_tasks) == 0
         assert len(mock_executor.running) == 0
         mock_executor._process_workloads([workload])
-        assert len(mock_executor.queued_tasks) == 0
+        assert len(mock_executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 0
         assert len(mock_executor.running) == 1
         assert workload.ti.key in mock_executor.running
         assert len(mock_executor.pending_tasks) == 1

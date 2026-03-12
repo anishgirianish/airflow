@@ -42,6 +42,7 @@ from uuid6 import uuid7
 from airflow._shared.timezones import timezone
 from airflow.configuration import conf
 from airflow.executors import workloads
+from airflow.executors.workloads.base import WorkloadType
 from airflow.executors.workloads.task import TaskInstanceDTO
 from airflow.models.dag import DAG
 from airflow.models.taskinstance import TaskInstance
@@ -222,7 +223,7 @@ def setup_dagrun_with_success_and_fail_tasks(dag_maker):
                 ):
                     executor.queue_workload(w, session=None)
 
-                executor.trigger_tasks(open_slots=10)
+                executor.trigger_workloads(open_slots=10)
                 for _ in range(20):
                     num_tasks = len(executor.tasks.keys())
                     if num_tasks == 2:
@@ -244,7 +245,7 @@ def setup_dagrun_with_success_and_fail_tasks(dag_maker):
         assert keys[0] not in executor.tasks
         assert keys[1] not in executor.tasks
 
-        assert executor.queued_tasks == {}
+        assert executor.executor_queues[WorkloadType.EXECUTE_TASK] == {}
 
     def test_error_sending_task(self):
         from airflow.providers.celery.executors import celery_executor, celery_executor_utils
@@ -262,7 +263,7 @@ def setup_dagrun_with_success_and_fail_tasks(dag_maker):
             )
 
             key = (task.dag.dag_id, task.task_id, ti.run_id, 0, -1)
-            executor.queued_tasks[key] = workload
+            executor.executor_queues[WorkloadType.EXECUTE_TASK][key] = workload
             executor.task_publish_retries[key] = 1
 
             # Mock send_task_to_executor to return an error result
@@ -282,7 +283,9 @@ def setup_dagrun_with_success_and_fail_tasks(dag_maker):
                 celery_executor_utils, "send_task_to_executor", side_effect=mock_send_error
             ):
                 executor.heartbeat()
-        assert len(executor.queued_tasks) == 0, "Task should no longer be queued"
+        assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 0, (
+            "Task should no longer be queued"
+        )
         assert executor.event_buffer[key][0] == State.FAILED
 
     def test_retry_on_error_sending_task(self, caplog):
@@ -314,30 +317,38 @@ def setup_dagrun_with_success_and_fail_tasks(dag_maker):
             )
 
             key = (task.dag.dag_id, task.task_id, ti.run_id, 0, -1)
-            executor.queued_tasks[key] = workload
+            executor.executor_queues[WorkloadType.EXECUTE_TASK][key] = workload
 
             # Test that when heartbeat is called again, task is published again to Celery Queue
             executor.heartbeat()
             assert dict(executor.task_publish_retries) == {key: 1}
-            assert len(executor.queued_tasks) == 1, "Task should remain in queue"
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 1, (
+                "Task should remain in queue"
+            )
             assert executor.event_buffer == {}
             assert f"[Try 1 of 3] Task Timeout Error for Task: ({key})." in caplog.text
 
             executor.heartbeat()
             assert dict(executor.task_publish_retries) == {key: 2}
-            assert len(executor.queued_tasks) == 1, "Task should remain in queue"
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 1, (
+                "Task should remain in queue"
+            )
             assert executor.event_buffer == {}
             assert f"[Try 2 of 3] Task Timeout Error for Task: ({key})." in caplog.text
 
             executor.heartbeat()
             assert dict(executor.task_publish_retries) == {key: 3}
-            assert len(executor.queued_tasks) == 1, "Task should remain in queue"
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 1, (
+                "Task should remain in queue"
+            )
             assert executor.event_buffer == {}
             assert f"[Try 3 of 3] Task Timeout Error for Task: ({key})." in caplog.text
 
             executor.heartbeat()
             assert dict(executor.task_publish_retries) == {}
-            assert len(executor.queued_tasks) == 0, "Task should no longer be in queue"
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 0, (
+                "Task should no longer be in queue"
+            )
             assert executor.event_buffer[key][0] == State.FAILED
 
 

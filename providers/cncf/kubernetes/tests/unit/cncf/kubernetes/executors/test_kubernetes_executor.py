@@ -616,9 +616,11 @@ class TestKubernetesExecutor:
 
     @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor.KubeConfig")
     @mock.patch("airflow.providers.cncf.kubernetes.executors.kubernetes_executor.KubernetesExecutor.sync")
-    @mock.patch("airflow.executors.base_executor.BaseExecutor.trigger_tasks")
+    @mock.patch("airflow.executors.base_executor.BaseExecutor.trigger_workloads")
     @mock.patch("airflow.executors.base_executor.Stats.gauge")
-    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_tasks, mock_sync, mock_kube_config):
+    def test_gauge_executor_metrics(
+        self, mock_stats_gauge, mock_trigger_workloads, mock_sync, mock_kube_config
+    ):
         executor = self.kubernetes_executor
         executor.heartbeat()
         calls = [
@@ -1986,7 +1988,7 @@ class TestKubernetesExecutorMultiTeam:
             assert team_a_executor.task_queue is not team_b_executor.task_queue
             assert team_a_executor.result_queue is not team_b_executor.result_queue
             assert team_a_executor.running is not team_b_executor.running
-            assert team_a_executor.queued_tasks is not team_b_executor.queued_tasks
+            assert team_a_executor.executor_queues is not team_b_executor.executor_queues
 
             assert team_a_executor.conf.team_name == "team_a"
             assert team_b_executor.conf.team_name == "team_b"
