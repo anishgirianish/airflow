@@ -166,9 +166,9 @@ class TestCeleryExecutor:
         assert FAKE_EXCEPTION_MSG in caplog.text, caplog.record_tuples
 
     @mock.patch("airflow.providers.celery.executors.celery_executor.CeleryExecutor.sync")
-    @mock.patch("airflow.providers.celery.executors.celery_executor.CeleryExecutor.trigger_tasks")
+    @mock.patch("airflow.providers.celery.executors.celery_executor.CeleryExecutor.trigger_workloads")
     @mock.patch("airflow.executors.base_executor.Stats.gauge")
-    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_tasks, mock_sync):
+    def test_gauge_executor_metrics(self, mock_stats_gauge, mock_trigger_workloads, mock_sync):
         executor = celery_executor.CeleryExecutor()
         executor.heartbeat()
         calls = [
@@ -682,7 +682,7 @@ class TestMultiTeamCeleryExecutor:
         # Executors have isolated internal state
         assert team_a_executor.tasks is not team_b_executor.tasks
         assert team_a_executor.running is not team_b_executor.running
-        assert team_a_executor.queued_tasks is not team_b_executor.queued_tasks
+        assert team_a_executor.executor_queues is not team_b_executor.executor_queues
 
     @conf_vars({("celery", "broker_url"): "redis://global:6379/0"})
     @mock.patch("airflow.providers.celery.executors.celery_executor.CeleryExecutor._send_tasks")
