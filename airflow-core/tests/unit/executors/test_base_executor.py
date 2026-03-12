@@ -36,7 +36,7 @@ from airflow.cli.cli_parser import AirflowHelpFormatter
 from airflow.executors import workloads
 from airflow.executors.base_executor import BaseExecutor, RunningRetryAttemptType
 from airflow.executors.local_executor import LocalExecutor
-from airflow.executors.workloads.base import WORKLOAD_TYPE_TIER, BundleInfo
+from airflow.executors.workloads.base import WORKLOAD_TYPE_TIER, BundleInfo, WorkloadType
 from airflow.executors.workloads.callback import CallbackDTO, execute_callback_workload
 from airflow.models.callback import CallbackFetchMethod
 from airflow.models.taskinstance import TaskInstance, TaskInstanceKey
@@ -239,7 +239,7 @@ def setup_trigger_workloads(dag_maker, parallelism=None):
 
     for task_instance in dagrun.task_instances:
         workload = workloads.ExecuteTask.make(task_instance)
-        executor.executor_queues["ExecuteTask"][task_instance.key] = workload
+        executor.executor_queues[WorkloadType.EXECUTE_TASK][task_instance.key] = workload
 
     return executor, dagrun
 
@@ -250,7 +250,7 @@ def test_trigger_queued_tasks(dag_maker):
     executor, dagrun = setup_trigger_workloads(dag_maker)
 
     # Verify tasks are queued
-    assert len(executor.executor_queues["ExecuteTask"]) == 3
+    assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 3
 
     # Call trigger_workloads with enough slots
     executor.trigger_workloads(open_slots=10)
@@ -277,7 +277,7 @@ def test_trigger_running_tasks(dag_maker):
     ti = dagrun.task_instances[0]
 
     workload = workloads.ExecuteTask.make(ti)
-    executor.executor_queues["ExecuteTask"][ti.key] = workload
+    executor.executor_queues[WorkloadType.EXECUTE_TASK][ti.key] = workload
 
     executor.trigger_workloads(open_slots=10)
 
@@ -288,7 +288,7 @@ def test_trigger_running_tasks(dag_maker):
 def test_debug_dump(caplog):
     executor = BaseExecutor()
     # Add an item so the queue appears in debug output
-    executor.executor_queues["ExecuteTask"]["dummy"] = "dummy"
+    executor.executor_queues[WorkloadType.EXECUTE_TASK]["dummy"] = "dummy"
     with caplog.at_level(logging.INFO):
         executor.debug_dump()
     assert "executor.queued[ExecuteTask]" in caplog.text
@@ -411,7 +411,7 @@ def test_repr():
 
 
 def test_supports_connection_test_default_value():
-    assert "TestConnection" not in BaseExecutor().supported_workload_types
+    assert WorkloadType.TEST_CONNECTION not in BaseExecutor().supported_workload_types
 
 
 def test_queue_connection_test_workload_rejected_by_default():
@@ -428,14 +428,14 @@ def test_queue_connection_test_workload_rejected_by_default():
 def test_queue_connection_test_workload_accepted_when_supported():
     """An executor with TestConnection in supported_workload_types accepts TestConnection workloads."""
     executor = LocalExecutor()
-    executor.executor_queues["TestConnection"].clear()
+    executor.executor_queues[WorkloadType.TEST_CONNECTION].clear()
     wl = workloads.TestConnection.make(
         connection_test_id=uuid4(),
         connection_id="test_conn",
     )
     executor.queue_workload(wl, session=mock.MagicMock(spec=Session))
-    assert len(executor.executor_queues["TestConnection"]) == 1
-    assert executor.executor_queues["TestConnection"][str(wl.connection_test_id)] is wl
+    assert len(executor.executor_queues[WorkloadType.TEST_CONNECTION]) == 1
+    assert executor.executor_queues[WorkloadType.TEST_CONNECTION][str(wl.connection_test_id)] is wl
 
 
 class TestWorkloadTypeTier:
@@ -443,8 +443,13 @@ class TestWorkloadTypeTier:
 
     def test_workload_type_tier_ordering(self):
         """WORKLOAD_TYPE_TIER assigns ascending tiers matching the registry tuple order."""
-        assert WORKLOAD_TYPE_TIER["TestConnection"] < WORKLOAD_TYPE_TIER["ExecuteCallback"]
-        assert WORKLOAD_TYPE_TIER["ExecuteCallback"] < WORKLOAD_TYPE_TIER["ExecuteTask"]
+        assert (
+            WORKLOAD_TYPE_TIER[WorkloadType.TEST_CONNECTION]
+            < WORKLOAD_TYPE_TIER[WorkloadType.EXECUTE_CALLBACK]
+        )
+        assert (
+            WORKLOAD_TYPE_TIER[WorkloadType.EXECUTE_CALLBACK] < WORKLOAD_TYPE_TIER[WorkloadType.EXECUTE_TASK]
+        )
 
     def test_sort_key_defaults_to_zero(self):
         """Workloads that don't override sort_key get FIFO (0)."""
@@ -534,11 +539,15 @@ class TestWorkloadTypeTier:
     def test_slots_with_multiple_queue_types(self):
         """slots_occupied counts workloads across all queue types."""
         executor = BaseExecutor()
-        executor.supported_workload_types = frozenset({"ExecuteTask", "ExecuteCallback"})
+        executor.supported_workload_types = frozenset(
+            {WorkloadType.EXECUTE_TASK, WorkloadType.EXECUTE_CALLBACK}
+        )
         date = timezone.utcnow()
         key1 = TaskInstanceKey("dag1", "task1", date, 1)
-        executor.executor_queues["ExecuteTask"][key1] = mock.MagicMock(spec=workloads.ExecuteTask)
-        executor.executor_queues["ExecuteCallback"]["cb1"] = mock.MagicMock(spec=workloads.ExecuteCallback)
+        executor.executor_queues[WorkloadType.EXECUTE_TASK][key1] = mock.MagicMock(spec=workloads.ExecuteTask)
+        executor.executor_queues[WorkloadType.EXECUTE_CALLBACK]["cb1"] = mock.MagicMock(
+            spec=workloads.ExecuteCallback
+        )
         key2 = TaskInstanceKey("dag1", "task2", date, 1)
         executor.running.add(key2)
 
@@ -595,7 +604,7 @@ class TestWorkloadTypeTier:
         for ti in dagrun.task_instances:
             executor.queue_workload(workloads.ExecuteTask.make(ti), session)
 
-        assert len(executor.executor_queues["ExecuteTask"]) == 3
+        assert len(executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 3
 
         scheduled = executor._get_workloads_to_schedule(open_slots=2)
         assert len(scheduled) == 2
@@ -779,11 +788,11 @@ class TestExecutorConf:
 class TestCallbackSupport:
     def test_base_executor_does_not_support_callbacks(self):
         executor = BaseExecutor()
-        assert "ExecuteCallback" not in executor.supported_workload_types
+        assert WorkloadType.EXECUTE_CALLBACK not in executor.supported_workload_types
 
     def test_local_executor_supports_callbacks(self):
         executor = LocalExecutor()
-        assert "ExecuteCallback" in executor.supported_workload_types
+        assert WorkloadType.EXECUTE_CALLBACK in executor.supported_workload_types
 
     @pytest.mark.db_test
     def test_queue_callback_without_support_raises_error(self, dag_maker, session):
@@ -807,7 +816,9 @@ class TestCallbackSupport:
     @pytest.mark.db_test
     def test_queue_workload_with_execute_callback(self, dag_maker, session):
         executor = BaseExecutor()
-        executor.supported_workload_types = frozenset({"ExecuteTask", "ExecuteCallback"})
+        executor.supported_workload_types = frozenset(
+            {WorkloadType.EXECUTE_TASK, WorkloadType.EXECUTE_CALLBACK}
+        )
         callback_data = CallbackDTO(
             id="12345678-1234-5678-1234-567812345678",
             fetch_method=CallbackFetchMethod.IMPORT_PATH,
@@ -823,13 +834,15 @@ class TestCallbackSupport:
 
         executor.queue_workload(callback_workload, session)
 
-        assert len(executor.executor_queues["ExecuteCallback"]) == 1
-        assert callback_data.id in executor.executor_queues["ExecuteCallback"]
+        assert len(executor.executor_queues[WorkloadType.EXECUTE_CALLBACK]) == 1
+        assert callback_data.id in executor.executor_queues[WorkloadType.EXECUTE_CALLBACK]
 
     @pytest.mark.db_test
     def test_get_workloads_prioritizes_callbacks(self, dag_maker, session):
         executor = BaseExecutor()
-        executor.supported_workload_types = frozenset({"ExecuteTask", "ExecuteCallback"})
+        executor.supported_workload_types = frozenset(
+            {WorkloadType.EXECUTE_TASK, WorkloadType.EXECUTE_CALLBACK}
+        )
         dagrun = setup_dagrun(dag_maker)
         callback_data = CallbackDTO(
             id="12345678-1234-5678-1234-567812345678",

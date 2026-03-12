@@ -32,6 +32,7 @@ from airflow.cli.cli_config import DefaultHelpParser
 from airflow.configuration import conf
 from airflow.executors import workloads
 from airflow.executors.executor_loader import ExecutorLoader
+from airflow.executors.workloads import WorkloadType
 from airflow.models import Log
 from airflow.models.callback import CallbackKey
 from airflow.observability.metrics import stats_utils
@@ -141,7 +142,7 @@ class BaseExecutor(LoggingMixin):
     """
 
     supports_ad_hoc_ti_run: bool = False
-    supported_workload_types: frozenset[str] = frozenset({"ExecuteTask"})
+    supported_workload_types: frozenset[str] = frozenset({WorkloadType.EXECUTE_TASK})
     supports_multi_team: bool = False
     supports_connection_test: bool = False
     sentry_integration: str = ""
@@ -264,9 +265,9 @@ class BaseExecutor(LoggingMixin):
         :return: True if the task is known to this executor
         """
         return (
-            task_instance.id in self.executor_queues["ExecuteTask"]
+            task_instance.id in self.executor_queues[WorkloadType.EXECUTE_TASK]
             or task_instance.id in self.running
-            or task_instance.key in self.executor_queues["ExecuteTask"]
+            or task_instance.key in self.executor_queues[WorkloadType.EXECUTE_TASK]
             or task_instance.key in self.running
         )
 

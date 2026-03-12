@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,11 +28,21 @@ from pydantic import BaseModel, ConfigDict, Field
 if TYPE_CHECKING:
     from airflow.api_fastapi.auth.tokens import JWTGenerator
 
+
+class WorkloadType(StrEnum):
+    """Central registry of all workload types."""
+
+    EXECUTE_TASK = "ExecuteTask"
+    EXECUTE_CALLBACK = "ExecuteCallback"
+    RUN_TRIGGER = "RunTrigger"
+    TEST_CONNECTION = "TestConnection"
+
+
 # Central priority registry: Tuple is ordered from highest priority to lowest.
 _workload_type_priority_order = (
-    "TestConnection",
-    "ExecuteCallback",
-    "ExecuteTask",
+    WorkloadType.TEST_CONNECTION,
+    WorkloadType.EXECUTE_CALLBACK,
+    WorkloadType.EXECUTE_TASK,
 )
 
 WORKLOAD_TYPE_TIER: dict[str, int] = {name: idx for idx, name in enumerate(_workload_type_priority_order)}

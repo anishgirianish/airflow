@@ -54,6 +54,7 @@ from airflow.executors.executor_constants import MOCK_EXECUTOR
 from airflow.executors.executor_loader import ExecutorLoader
 from airflow.executors.executor_utils import ExecutorName
 from airflow.executors.local_executor import LocalExecutor
+from airflow.executors.workloads import WorkloadType
 from airflow.jobs.job import Job, run_job
 from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
 from airflow.models.asset import (
@@ -9124,7 +9125,7 @@ def scheduler_job_runner_for_connection_tests(session):
     mock_job.id = 1
     mock_job.max_tis_per_query = 16
     executor = LocalExecutor()
-    executor.executor_queues["TestConnection"].clear()
+    executor.executor_queues[WorkloadType.TEST_CONNECTION].clear()
     runner = SchedulerJobRunner.__new__(SchedulerJobRunner)
     runner.job = mock_job
     runner.executors = [executor]
@@ -9155,7 +9156,14 @@ class TestDispatchConnectionTests:
         session.expire_all()
         ct = session.get(ConnectionTest, ct.id)
         assert ct.state == ConnectionTestState.QUEUED
-        assert len(scheduler_job_runner_for_connection_tests.executor.executor_queues["TestConnection"]) == 1
+        assert (
+            len(
+                scheduler_job_runner_for_connection_tests.executor.executor_queues[
+                    WorkloadType.TEST_CONNECTION
+                ]
+            )
+            == 1
+        )
 
     @mock.patch.dict(
         os.environ,
@@ -9192,7 +9200,7 @@ class TestDispatchConnectionTests:
     ):
         """Tests fail immediately when no executor supports connection testing."""
         unsupporting_executor = BaseExecutor()
-        unsupporting_executor.supported_workload_types = frozenset({"ExecuteTask"})
+        unsupporting_executor.supported_workload_types = frozenset({WorkloadType.EXECUTE_TASK})
         scheduler_job_runner_for_connection_tests.executors = [unsupporting_executor]
         scheduler_job_runner_for_connection_tests.executor = unsupporting_executor
 
@@ -9340,11 +9348,11 @@ class TestDispatchConnectionTests:
 
         executor_a = LocalExecutor()
         executor_a.name = ExecutorName(module_path="path.to.ExecutorA", alias="executor_a")
-        executor_a.executor_queues["TestConnection"].clear()
+        executor_a.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         executor_b = LocalExecutor()
         executor_b.name = ExecutorName(module_path="path.to.ExecutorB", alias="executor_b")
-        executor_b.executor_queues["TestConnection"].clear()
+        executor_b.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         runner = SchedulerJobRunner.__new__(SchedulerJobRunner)
         runner.job = mock_job
@@ -9358,8 +9366,8 @@ class TestDispatchConnectionTests:
 
         runner._enqueue_connection_tests(session=session)
 
-        assert len(executor_b.executor_queues["TestConnection"]) == 1
-        assert len(executor_a.executor_queues["TestConnection"]) == 0
+        assert len(executor_b.executor_queues[WorkloadType.TEST_CONNECTION]) == 1
+        assert len(executor_a.executor_queues[WorkloadType.TEST_CONNECTION]) == 0
 
     @mock.patch.dict(
         os.environ,
@@ -9379,11 +9387,11 @@ class TestDispatchConnectionTests:
 
         executor_a = LocalExecutor()
         executor_a.name = ExecutorName(module_path="path.to.ExecutorA", alias="executor_a")
-        executor_a.executor_queues["TestConnection"].clear()
+        executor_a.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         executor_b = LocalExecutor()
         executor_b.name = ExecutorName(module_path="path.to.ExecutorB", alias="executor_b")
-        executor_b.executor_queues["TestConnection"].clear()
+        executor_b.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         runner = SchedulerJobRunner.__new__(SchedulerJobRunner)
         runner.job = mock_job
@@ -9397,8 +9405,8 @@ class TestDispatchConnectionTests:
 
         runner._enqueue_connection_tests(session=session)
 
-        assert len(executor_b.executor_queues["TestConnection"]) == 1
-        assert len(executor_a.executor_queues["TestConnection"]) == 0
+        assert len(executor_b.executor_queues[WorkloadType.TEST_CONNECTION]) == 1
+        assert len(executor_a.executor_queues[WorkloadType.TEST_CONNECTION]) == 0
 
     def test_dispatch_executor_matched_by_class_name(self, session):
         """When executor is specified by class name only, the matching executor is selected."""
@@ -9411,11 +9419,11 @@ class TestDispatchConnectionTests:
 
         executor_a = LocalExecutor()
         executor_a.name = ExecutorName(module_path="path.to.ExecutorA", alias="executor_a")
-        executor_a.executor_queues["TestConnection"].clear()
+        executor_a.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         executor_b = LocalExecutor()
         executor_b.name = ExecutorName(module_path="path.to.ExecutorB", alias="executor_b")
-        executor_b.executor_queues["TestConnection"].clear()
+        executor_b.executor_queues[WorkloadType.TEST_CONNECTION].clear()
 
         runner = SchedulerJobRunner.__new__(SchedulerJobRunner)
         runner.job = mock_job
@@ -9429,8 +9437,8 @@ class TestDispatchConnectionTests:
 
         runner._enqueue_connection_tests(session=session)
 
-        assert len(executor_b.executor_queues["TestConnection"]) == 1
-        assert len(executor_a.executor_queues["TestConnection"]) == 0
+        assert len(executor_b.executor_queues[WorkloadType.TEST_CONNECTION]) == 1
+        assert len(executor_a.executor_queues[WorkloadType.TEST_CONNECTION]) == 0
 
     @mock.patch.dict(
         os.environ,
@@ -9468,7 +9476,7 @@ class TestDispatchConnectionTests:
     ):
         """When the resolved executor does not support connection tests, the test is failed gracefully."""
         executor = scheduler_job_runner_for_connection_tests.executor
-        executor.supported_workload_types = frozenset({"ExecuteTask"})
+        executor.supported_workload_types = frozenset({WorkloadType.EXECUTE_TASK})
 
         ct = ConnectionTest(connection_id="test_conn")
         session.add(ct)

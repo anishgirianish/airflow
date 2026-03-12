@@ -35,6 +35,7 @@ from inflection import camelize
 from semver import VersionInfo
 
 from airflow.executors.base_executor import BaseExecutor
+from airflow.executors.workloads import WorkloadType
 from airflow.models import TaskInstance
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.providers.amazon.aws.executors.ecs import ecs_executor, ecs_executor_config
@@ -420,7 +421,7 @@ class TestAwsEcsExecutor:
         from airflow.executors.workloads import ExecuteTask
 
         workload = mock.Mock(spec=ExecuteTask)
-        workload.type = "ExecuteTask"
+        workload.type = WorkloadType.EXECUTE_TASK
         workload.ti = mock.Mock(spec=TaskInstance)
         workload.ti.key = mock_airflow_key()
         workload.queue_key = workload.ti.key
@@ -443,11 +444,11 @@ class TestAwsEcsExecutor:
             "failures": [],
         }
 
-        assert mock_executor.executor_queues["ExecuteTask"][workload.ti.key] == workload
+        assert mock_executor.executor_queues[WorkloadType.EXECUTE_TASK][workload.ti.key] == workload
         assert len(mock_executor.pending_tasks) == 0
         assert len(mock_executor.running) == 0
         mock_executor._process_workloads([workload])
-        assert len(mock_executor.executor_queues["ExecuteTask"]) == 0
+        assert len(mock_executor.executor_queues[WorkloadType.EXECUTE_TASK]) == 0
         assert len(mock_executor.running) == 1
         assert workload.ti.key in mock_executor.running
         assert len(mock_executor.pending_tasks) == 1

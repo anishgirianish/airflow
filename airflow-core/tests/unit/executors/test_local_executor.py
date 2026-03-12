@@ -31,6 +31,7 @@ from airflow._shared.timezones import timezone
 from airflow.executors import workloads
 from airflow.executors.base_executor import ExecutorConf
 from airflow.executors.local_executor import LocalExecutor, _execute_connection_test, _execute_work
+from airflow.executors.workloads import WorkloadType
 from airflow.executors.workloads.base import BundleInfo
 from airflow.executors.workloads.callback import CallbackDTO
 from airflow.executors.workloads.task import TaskInstanceDTO
@@ -151,7 +152,7 @@ class TestLocalExecutor:
             )
 
             # Process queued workloads to trigger worker spawning
-            executor._process_workloads(list(executor.executor_queues["ExecuteTask"].values()))
+            executor._process_workloads(list(executor.executor_queues[WorkloadType.EXECUTE_TASK].values()))
 
             executor.end()
 
@@ -341,7 +342,7 @@ class TestLocalExecutor:
 class TestLocalExecutorConnectionTestSupport:
     def test_supports_connection_test(self):
         executor = LocalExecutor()
-        assert "TestConnection" in executor.supported_workload_types
+        assert WorkloadType.TEST_CONNECTION in executor.supported_workload_types
 
 
 @mock.patch("airflow.executors.local_executor.signal", autospec=True)
@@ -579,7 +580,7 @@ class TestLocalExecutorConnectionTestExecution:
 class TestLocalExecutorCallbackSupport:
     def test_supports_callbacks(self):
         executor = LocalExecutor()
-        assert "ExecuteCallback" in executor.supported_workload_types
+        assert WorkloadType.EXECUTE_CALLBACK in executor.supported_workload_types
 
     @skip_spawn_mp_start
     @mock.patch("airflow.executors.workloads.callback.execute_callback_workload")
@@ -603,9 +604,9 @@ class TestLocalExecutorCallbackSupport:
         executor.start()
 
         try:
-            executor.executor_queues["ExecuteCallback"][callback_data.id] = callback_workload
+            executor.executor_queues[WorkloadType.EXECUTE_CALLBACK][callback_data.id] = callback_workload
             executor._process_workloads([callback_workload])
-            assert len(executor.executor_queues["ExecuteCallback"]) == 0
+            assert len(executor.executor_queues[WorkloadType.EXECUTE_CALLBACK]) == 0
             # We can't easily verify worker execution without running the worker,
             # but we can verify the helper is called via mock
 

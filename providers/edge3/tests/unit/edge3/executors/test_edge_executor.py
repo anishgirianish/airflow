@@ -24,6 +24,7 @@ import time_machine
 from sqlalchemy import delete, select
 
 from airflow.configuration import conf
+from airflow.executors.workloads import WorkloadType
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.providers.common.compat.sdk import Stats, timezone
 from airflow.providers.edge3.executors.edge_executor import EdgeExecutor
@@ -53,7 +54,7 @@ class TestEdgeExecutor:
         ti.dag_run.run_id = key.run_id
         ti.dag_run.start_date = datetime(2021, 1, 1)
         executor = EdgeExecutor()
-        executor.executor_queues["ExecuteTask"] = {key: [None, None, None, ti]}
+        executor.executor_queues[WorkloadType.EXECUTE_TASK] = {key: [None, None, None, ti]}
 
         return (executor, key)
 
@@ -283,7 +284,7 @@ class TestEdgeExecutor:
 
         # Add task to executor's internal state
         executor.running.add(key)
-        executor.executor_queues["ExecuteTask"][key] = [None, None, None, ti]
+        executor.executor_queues[WorkloadType.EXECUTE_TASK][key] = [None, None, None, ti]
         executor.last_reported_state[key] = TaskInstanceState.QUEUED
 
         # Add corresponding job to database
@@ -313,7 +314,7 @@ class TestEdgeExecutor:
 
         # Verify task is removed from executor's internal state
         assert key not in executor.running
-        assert key not in executor.executor_queues["ExecuteTask"]
+        assert key not in executor.executor_queues[WorkloadType.EXECUTE_TASK]
         assert key not in executor.last_reported_state
 
         # Verify job is removed from database
@@ -346,4 +347,4 @@ class TestEdgeExecutor:
 
         # Verify nothing breaks
         assert key not in executor.running
-        assert key not in executor.executor_queues["ExecuteTask"]
+        assert key not in executor.executor_queues[WorkloadType.EXECUTE_TASK]

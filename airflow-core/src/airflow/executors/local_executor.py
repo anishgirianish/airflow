@@ -38,6 +38,7 @@ import structlog
 
 from airflow.executors import workloads
 from airflow.executors.base_executor import BaseExecutor
+from airflow.executors.workloads import WorkloadType
 from airflow.executors.workloads.callback import execute_callback_workload
 from airflow.models.connection import Connection
 from airflow.models.connection_test import ConnectionTestState, run_connection_test
@@ -269,7 +270,13 @@ class LocalExecutor(BaseExecutor):
 
     supports_multi_team: bool = True
     serve_logs: bool = True
-    supported_workload_types: frozenset[str] = frozenset({"ExecuteTask", "ExecuteCallback", "TestConnection"})
+    supported_workload_types: frozenset[str] = frozenset(
+        {
+            WorkloadType.EXECUTE_TASK,
+            WorkloadType.EXECUTE_CALLBACK,
+            WorkloadType.TEST_CONNECTION,
+        }
+    )
 
     activity_queue: SimpleQueue[workloads.All | None]
     result_queue: SimpleQueue[WorkloadResultType]
