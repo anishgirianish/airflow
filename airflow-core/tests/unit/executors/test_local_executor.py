@@ -180,7 +180,7 @@ class TestLocalExecutor:
             )
 
             # Process queued workloads to trigger worker spawning
-            executor._process_workloads(list(executor.queued_tasks.values()))
+            executor._process_workloads(list(executor.executor_queues[WorkloadType.EXECUTE_TASK].values()))
 
             executor.end()
 
@@ -380,7 +380,6 @@ class TestLocalExecutor:
 class TestLocalExecutorCallbackSupport:
     def test_supports_callbacks_flag_is_true(self):
         executor = LocalExecutor()
-        assert executor.supports_callbacks is True
         assert WorkloadType.EXECUTE_CALLBACK in executor.supported_workload_types
 
     @skip_non_fork_mp_start

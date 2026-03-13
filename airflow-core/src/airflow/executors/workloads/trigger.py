@@ -23,8 +23,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from airflow.executors.workloads.base import WorkloadType
-
 # Using noqa because Ruff wants this in a TYPE_CHECKING block but Pydantic fails if it is.
 from airflow.executors.workloads.task import TaskInstanceDTO  # noqa: TCH001
 
