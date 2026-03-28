@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from deprecated import deprecated
 
+from airflow.configuration import conf
 from airflow.exceptions import AirflowProviderDeprecationWarning
 from airflow.executors.base_executor import BaseExecutor
 from airflow.providers.celery.executors.celery_executor import CeleryExecutor  # noqa: TC001
