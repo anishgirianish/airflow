@@ -265,16 +265,18 @@ class BaseExecutor(LoggingMixin):
         """
         Select and return the next batch of workloads to schedule, respecting priority policy.
 
-        Workloads are sorted by ``WORKLOAD_TYPE_TIER`` (tier assigned by workload type) first,
-        then by ``sort_key`` within the same tier.  Lower tier values are scheduled first;
-        within the same tier, lower ``sort_key`` values come first (``sort_key=0`` gives FIFO).
+        Workloads are sorted by ``WORKLOAD_TYPE_PRIORITY`` (priority assigned by workload type) first,
+        then by ``sort_key`` within the same priority.  Lower priority values are scheduled first;
+        within the same priority, lower ``sort_key`` values come first (``sort_key=0`` gives FIFO).
 
         :param open_slots: Number of available execution slots
         """
         all_workloads: list[tuple[WorkloadKey, QueueableWorkload]] = [
             (key, workload) for queue in self.executor_queues.values() for key, workload in queue.items()
         ]
-        all_workloads.sort(key=lambda item: (workloads.WORKLOAD_TYPE_TIER[item[1].type], item[1].sort_key))
+        all_workloads.sort(
+            key=lambda item: (workloads.WORKLOAD_TYPE_PRIORITY[item[1].type], item[1].sort_key)
+        )
         return all_workloads[:open_slots]
 
     def _process_workloads(self, workloads: Sequence[QueueableWorkload]) -> None:
@@ -374,7 +376,7 @@ class BaseExecutor(LoggingMixin):
         """
         Initiate async execution of queued workloads, up to the number of available slots.
 
-        Workloads are scheduled according to their ``WORKLOAD_TYPE_TIER`` and ``sort_key``.
+        Workloads are scheduled according to their ``WORKLOAD_TYPE_PRIORITY`` and ``sort_key``.
 
         :param open_slots: Number of open slots
         """

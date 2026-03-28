@@ -43,7 +43,7 @@ _workload_type_priority_order = (
     WorkloadType.EXECUTE_TASK,
 )
 
-WORKLOAD_TYPE_TIER: dict[str, int] = {name: idx for idx, name in enumerate(_workload_type_priority_order)}
+WORKLOAD_TYPE_PRIORITY: dict[str, int] = {name: idx for idx, name in enumerate(_workload_type_priority_order)}
 
 
 class BaseWorkload:
@@ -102,11 +102,11 @@ class BaseWorkloadSchema(BaseModel):
     @property
     def sort_key(self) -> int:
         """
-        Return the sort key for ordering workloads within the same tier.
+        Return the sort key for ordering workloads within the same priority.
 
         The default of ``0`` gives FIFO behaviour (Python's stable sort preserves
         insertion order among equal keys).  Override in subclasses that need
-        priority ordering within their tier — for example, ``ExecuteTask`` returns
+        priority ordering within their priority group — for example, ``ExecuteTask`` returns
         ``self.ti.priority_weight`` so that higher-priority tasks are scheduled first.
         """
         return 0
@@ -127,4 +127,4 @@ class BaseDagBundleWorkload(BaseWorkloadSchema, ABC):
     @property
     @abstractmethod
     def sort_key(self) -> int:
-        """Return the sort key for ordering workloads within the same tier."""
+        """Return the sort key for ordering workloads within the same priority."""
