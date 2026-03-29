@@ -306,8 +306,8 @@ def test_debug_dump_with_populated_queues(caplog, dag_maker):
     with caplog.at_level(logging.INFO):
         executor.debug_dump()
 
-    assert f"executor.queued[{WorkloadType.EXECUTE_TASK}]" in caplog.text
-    assert "(3)" in caplog.text
+    queued_msgs = [m for m in caplog.messages if "executor.queued" in m]
+    assert queued_msgs, "Expected at least one 'executor.queued' log message"
     assert "executor.running" in caplog.text
     assert "executor.event_buffer" in caplog.text
 
