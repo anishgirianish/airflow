@@ -141,8 +141,8 @@ def _convert_variable_result_to_variable(var_result: VariableResult, deserialize
 
 
 def _get_connection(conn_id: str) -> Connection:
+    from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
     from airflow.sdk.execution_time.cache import SecretCache
-    from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
 
     # Check cache first (optional; only on dag processor)
     try:
@@ -193,7 +193,7 @@ async def _async_get_connection(conn_id: str) -> Connection:
     except SecretCache.NotPresentException:
         pass  # continue to backends
 
-    from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
+    from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
 
     # Try secrets backends
     backends = ensure_secrets_backend_loaded()
@@ -226,8 +226,8 @@ async def _async_get_connection(conn_id: str) -> Connection:
 
 
 def _get_variable(key: str, deserialize_json: bool) -> Any:
+    from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
     from airflow.sdk.execution_time.cache import SecretCache
-    from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
 
     # Check cache first
     try:
@@ -282,10 +282,10 @@ def _set_variable(key: str, value: Any, description: str | None = None, serializ
     #   keep Task SDK as a separate package than execution time mods.
     import json
 
+    from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
     from airflow.sdk.execution_time.cache import SecretCache
     from airflow.sdk.execution_time.comms import PutVariable
     from airflow.sdk.execution_time.secrets.execution_api import ExecutionAPISecretsBackend
-    from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
     from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
 
     # check for write conflicts on the worker

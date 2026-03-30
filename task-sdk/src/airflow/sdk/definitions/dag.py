@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.edges import EdgeInfoType
     from airflow.sdk.definitions.mappedoperator import MappedOperator
     from airflow.sdk.definitions.taskgroup import TaskGroup
-    from airflow.sdk.execution_time.supervisor import TaskRunResult
+    from airflow.sdk.execution_time.task_supervisor import TaskRunResult
     from airflow.timetables.base import DataInterval, Timetable as CoreTimetable
 
     Operator: TypeAlias = BaseOperator | MappedOperator
@@ -1439,7 +1439,7 @@ def _run_task(
 
             from airflow.sdk.api.datamodels._generated import TaskInstance as TaskInstanceSDK
             from airflow.sdk.execution_time.comms import DeferTask
-            from airflow.sdk.execution_time.supervisor import run_task_in_process
+            from airflow.sdk.execution_time.task_supervisor import run_task_in_process
             from airflow.serialization.serialized_objects import create_scheduler_operator
 
             # The API Server expects the task instance to be in QUEUED state before
@@ -1499,7 +1499,7 @@ def _run_task(
 
 
 def _run_inline_trigger(trigger, task_sdk_ti):
-    from airflow.sdk.execution_time.supervisor import InProcessTestSupervisor
+    from airflow.sdk.execution_time.task_supervisor import InProcessTestSupervisor
 
     return InProcessTestSupervisor.run_trigger_in_process(trigger=trigger, ti=task_sdk_ti)
 

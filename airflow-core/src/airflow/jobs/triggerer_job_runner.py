@@ -55,6 +55,7 @@ from airflow.models.dagbag import DBDagBag
 from airflow.models.trigger import Trigger
 from airflow.observability.metrics import stats_utils
 from airflow.sdk.api.datamodels._generated import HITLDetailResponse
+from airflow.sdk.execution_time.base_supervisor import WatchedSubprocess, make_buffered_socket_reader
 from airflow.sdk.execution_time.comms import (
     CommsDecoder,
     ConnectionResult,
@@ -84,7 +85,6 @@ from airflow.sdk.execution_time.comms import (
     _new_encoder,
     _RequestFrame,
 )
-from airflow.sdk.execution_time.supervisor import WatchedSubprocess, make_buffered_socket_reader
 from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance
 from airflow.serialization.serialized_objects import DagSerialization
 from airflow.triggers.base import BaseEventTrigger, BaseTrigger, DiscrimatedTriggerEvent, TriggerEvent

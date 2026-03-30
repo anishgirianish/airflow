@@ -55,6 +55,33 @@ skip_fork_mp_start = pytest.mark.skipif(
 )
 
 
+def _make_mock_task_workload():
+    """Create a mock ExecuteTask workload for testing."""
+    from airflow.executors.workloads.task import TaskInstanceDTO
+
+    ti = TaskInstanceDTO(
+        id=uuid7(),
+        dag_version_id=uuid7(),
+        task_id="test_task",
+        dag_id="test_dag",
+        run_id="test_run",
+        try_number=1,
+        state="queued",
+        pool_slots=1,
+        queue="default",
+        priority_weight=1,
+        map_index=-1,
+        start_date=timezone.utcnow(),
+    )
+    return workloads.ExecuteTask(
+        token="",
+        ti=ti,
+        dag_rel_path="some/path",
+        log_path=None,
+        bundle_info=dict(name="test", version="test"),
+    )
+
+
 class TestLocalExecutor:
     """
     When the executor is started, end() must be called before the test finishes.
@@ -116,7 +143,7 @@ class TestLocalExecutor:
             executor.end()
 
     @skip_non_fork_mp_start
-    @mock.patch("airflow.sdk.execution_time.supervisor.supervise")
+    @mock.patch("airflow.sdk.execution_time.task_supervisor.supervise_task")
     def test_execution(self, mock_supervise):
         success_tis = [
             TaskInstanceDTO(
@@ -262,14 +289,15 @@ class TestLocalExecutor:
             "relative_base_url",
         ],
     )
-    @mock.patch("airflow.sdk.execution_time.supervisor.supervise")
+    @mock.patch("airflow.sdk.execution_time.task_supervisor.supervise_task")
     def test_execution_api_server_url_config(self, mock_supervise, conf_values, expected_server):
         """Test that execution_api_server_url is correctly configured with fallback"""
         from airflow.executors.base_executor import ExecutorConf
 
         with conf_vars(conf_values):
             team_conf = ExecutorConf(team_name=None)
-            _execute_work(log=mock.ANY, workload=mock.MagicMock(), team_conf=team_conf)
+            workload = _make_mock_task_workload()
+            _execute_work(log=mock.ANY, workload=workload, team_conf=team_conf)
 
             mock_supervise.assert_called_with(
                 ti=mock.ANY,
@@ -280,7 +308,7 @@ class TestLocalExecutor:
                 log_path=mock.ANY,
             )
 
-    @mock.patch("airflow.sdk.execution_time.supervisor.supervise")
+    @mock.patch("airflow.sdk.execution_time.task_supervisor.supervise_task")
     def test_team_and_global_config_isolation(self, mock_supervise):
         """Test that team-specific and global executors use correct configurations side-by-side"""
         from airflow.executors.base_executor import ExecutorConf
@@ -304,7 +332,7 @@ class TestLocalExecutor:
             with conf_vars(config_overrides):
                 # Test team-specific config
                 team_conf = ExecutorConf(team_name=team_name)
-                _execute_work(log=mock.ANY, workload=mock.MagicMock(), team_conf=team_conf)
+                _execute_work(log=mock.ANY, workload=_make_mock_task_workload(), team_conf=team_conf)
 
                 # Verify team-specific server URL was used
                 assert mock_supervise.call_count == 1
@@ -315,7 +343,7 @@ class TestLocalExecutor:
 
                 # Test global config (no team)
                 global_conf = ExecutorConf(team_name=None)
-                _execute_work(log=mock.ANY, workload=mock.MagicMock(), team_conf=global_conf)
+                _execute_work(log=mock.ANY, workload=_make_mock_task_workload(), team_conf=global_conf)
 
                 # Verify default server URL was used
                 assert mock_supervise.call_count == 1

@@ -184,7 +184,7 @@ class TestContextDetection:
 
     def test_client_context_with_supervisor_comms(self, mock_supervisor_comms):
         """Client context: SUPERVISOR_COMMS set → uses worker chain."""
-        from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
+        from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
 
         backends = ensure_secrets_backend_loaded()
         backend_classes = [type(b).__name__ for b in backends]
@@ -195,7 +195,7 @@ class TestContextDetection:
         """Server context: env var set → uses server chain."""
         import sys
 
-        from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
+        from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
 
         monkeypatch.setenv("_AIRFLOW_PROCESS_CONTEXT", "server")
         # Ensure SUPERVISOR_COMMS is not available
@@ -211,7 +211,7 @@ class TestContextDetection:
         """Fallback context: no SUPERVISOR_COMMS, no env var → only env vars + external."""
         import sys
 
-        from airflow.sdk.execution_time.supervisor import ensure_secrets_backend_loaded
+        from airflow.sdk.execution_time.base_supervisor import ensure_secrets_backend_loaded
 
         # Ensure no SUPERVISOR_COMMS
         if "airflow.sdk.execution_time.task_runner" in sys.modules:

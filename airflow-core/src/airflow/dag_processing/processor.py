@@ -38,6 +38,7 @@ from airflow.configuration import conf
 from airflow.dag_processing.bundles.base import BundleVersionLock
 from airflow.dag_processing.dagbag import BundleDagBag, DagBag
 from airflow.sdk.exceptions import TaskNotFound
+from airflow.sdk.execution_time.base_supervisor import WatchedSubprocess
 from airflow.sdk.execution_time.comms import (
     ConnectionResult,
     DeleteVariable,
@@ -66,7 +67,6 @@ from airflow.sdk.execution_time.comms import (
     XComSequenceIndexResult,
     XComSequenceSliceResult,
 )
-from airflow.sdk.execution_time.supervisor import WatchedSubprocess
 from airflow.sdk.execution_time.task_runner import RuntimeTaskInstance, _send_error_email_notification
 from airflow.serialization.serialized_objects import DagSerialization, LazyDeserializedDAG
 from airflow.utils.dag_version_inflation_checker import check_dag_file_stability
