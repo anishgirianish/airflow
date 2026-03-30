@@ -65,6 +65,10 @@ from airflow.sdk.api.datamodels._generated import (
 )
 from airflow.sdk.exceptions import AirflowRuntimeError, ErrorType, TaskAlreadyRunningError
 from airflow.sdk.execution_time import task_runner
+from airflow.sdk.execution_time.base_supervisor import (
+    _make_process_nondumpable,
+    process_log_messages_from_subprocess,
+)
 from airflow.sdk.execution_time.comms import (
     AssetEventsResult,
     AssetResult,
@@ -135,17 +139,15 @@ from airflow.sdk.execution_time.comms import (
     _RequestFrame,
     _ResponseFrame,
 )
-from airflow.sdk.execution_time.supervisor import (
+from airflow.sdk.execution_time.task_runner import run
+from airflow.sdk.execution_time.task_supervisor import (
     ActivitySubprocess,
     InProcessSupervisorComms,
     InProcessTestSupervisor,
-    _make_process_nondumpable,
     _remote_logging_conn,
-    process_log_messages_from_subprocess,
     set_supervisor_comms,
-    supervise,
+    supervise_task,
 )
-from airflow.sdk.execution_time.task_runner import run
 
 from tests_common.test_utils.config import conf_vars
 
@@ -230,7 +232,7 @@ class TestSupervisor:
 
         with patch.dict(os.environ, local_dag_bundle_cfg(test_dags_dir, bundle_info.name)):
             with expectation:
-                supervise(**kw)
+                supervise_task(**kw)
 
 
 @pytest.mark.usefixtures("disable_capturing")
@@ -264,7 +266,7 @@ class TestWatchedSubprocess:
         monkeypatch.setattr(secrets_package, "ExecutionAPISecretsBackend", fresh_execution_backend)
 
         monkeypatch.setattr(
-            "airflow.sdk.execution_time.supervisor.ensure_secrets_backend_loaded",
+            "airflow.sdk.execution_time.task_supervisor.ensure_secrets_backend_loaded",
             lambda: [EnvironmentVariablesBackend(), fresh_execution_backend()],
         )
 
@@ -542,9 +544,9 @@ class TestWatchedSubprocess:
 
     def test_regular_heartbeat(self, spy_agency: kgb.SpyAgency, monkeypatch, mocker, make_ti_context):
         """Test that the WatchedSubprocess class regularly sends heartbeat requests, up to a certain frequency"""
-        import airflow.sdk.execution_time.supervisor
+        import airflow.sdk.execution_time.task_supervisor
 
-        monkeypatch.setattr(airflow.sdk.execution_time.supervisor, "MIN_HEARTBEAT_INTERVAL", 0.1)
+        monkeypatch.setattr(airflow.sdk.execution_time.task_supervisor, "MIN_HEARTBEAT_INTERVAL", 0.1)
 
         def subprocess_main():
             CommsDecoder()._get_response()
@@ -573,9 +575,9 @@ class TestWatchedSubprocess:
 
     def test_no_heartbeat_in_overtime(self, spy_agency: kgb.SpyAgency, monkeypatch, mocker, make_ti_context):
         """Test that we don't try and send heartbeats for task that are in "overtime"."""
-        import airflow.sdk.execution_time.supervisor
+        import airflow.sdk.execution_time.task_supervisor
 
-        monkeypatch.setattr(airflow.sdk.execution_time.supervisor, "MIN_HEARTBEAT_INTERVAL", 0.1)
+        monkeypatch.setattr(airflow.sdk.execution_time.task_supervisor, "MIN_HEARTBEAT_INTERVAL", 0.1)
 
         def subprocess_main():
             CommsDecoder()._get_response()
@@ -624,7 +626,7 @@ class TestWatchedSubprocess:
 
         bundle_info = BundleInfo(name="my-bundle", version=None)
         with patch.dict(os.environ, local_dag_bundle_cfg(test_dags_dir, bundle_info.name)):
-            exit_code = supervise(
+            exit_code = supervise_task(
                 ti=ti,
                 dag_rel_path=dagfile_path,
                 token="",
@@ -677,9 +679,9 @@ class TestWatchedSubprocess:
         bundle_info = BundleInfo(name="my-bundle", version=None)
         with (
             patch.dict(os.environ, local_dag_bundle_cfg(test_dags_dir, bundle_info.name)),
-            patch("airflow.sdk.execution_time.supervisor.time.monotonic", side_effect=mock_monotonic),
+            patch("airflow.sdk.execution_time.task_supervisor.time.monotonic", side_effect=mock_monotonic),
         ):
-            exit_code = supervise(
+            exit_code = supervise_task(
                 ti=ti,
                 dag_rel_path="super_basic_deferred_run.py",
                 token="",
@@ -740,10 +742,10 @@ class TestWatchedSubprocess:
 
         Also verifies that the supervisor does not try to send the finish request (update_state) to the API server.
         """
-        import airflow.sdk.execution_time.supervisor
+        import airflow.sdk.execution_time.task_supervisor
 
         # Heartbeat every time around the loop
-        monkeypatch.setattr(airflow.sdk.execution_time.supervisor, "MIN_HEARTBEAT_INTERVAL", 0.0)
+        monkeypatch.setattr(airflow.sdk.execution_time.task_supervisor, "MIN_HEARTBEAT_INTERVAL", 0.0)
 
         def subprocess_main():
             CommsDecoder()._get_response()
@@ -874,10 +876,10 @@ class TestWatchedSubprocess:
         max_failed_heartbeats = 3
         min_heartbeat_interval = 5
         monkeypatch.setattr(
-            "airflow.sdk.execution_time.supervisor.MAX_FAILED_HEARTBEATS", max_failed_heartbeats
+            "airflow.sdk.execution_time.task_supervisor.MAX_FAILED_HEARTBEATS", max_failed_heartbeats
         )
         monkeypatch.setattr(
-            "airflow.sdk.execution_time.supervisor.MIN_HEARTBEAT_INTERVAL", min_heartbeat_interval
+            "airflow.sdk.execution_time.task_supervisor.MIN_HEARTBEAT_INTERVAL", min_heartbeat_interval
         )
 
         mock_process = mocker.Mock()
@@ -889,7 +891,7 @@ class TestWatchedSubprocess:
         client.task_instances.heartbeat = mock_client_heartbeat
 
         # Patch the kill method at the class level so we can assert it was called with the correct signal
-        mock_kill = mocker.patch("airflow.sdk.execution_time.supervisor.WatchedSubprocess.kill")
+        mock_kill = mocker.patch("airflow.sdk.execution_time.base_supervisor.WatchedSubprocess.kill")
 
         proc = ActivitySubprocess(
             process_log=mocker.MagicMock(),
@@ -905,7 +907,7 @@ class TestWatchedSubprocess:
             return current
 
         with patch(
-            "airflow.sdk.execution_time.supervisor.time.monotonic",
+            "airflow.sdk.execution_time.task_supervisor.time.monotonic",
             side_effect=mock_monotonic,
         ):
             time_now = timezone.datetime(2024, 11, 28, 12, 0, 0)
@@ -980,17 +982,17 @@ class TestWatchedSubprocess:
         """Test handling of overtime under various conditions."""
         # Mocking logger since we are only interested that it is called with the expected message
         # and not the actual log output
-        mock_logger = mocker.patch("airflow.sdk.execution_time.supervisor.log")
+        mock_logger = mocker.patch("airflow.sdk.execution_time.task_supervisor.log")
 
         # Mock the kill method at the class level so we can assert it was called with the correct signal
-        mock_kill = mocker.patch("airflow.sdk.execution_time.supervisor.WatchedSubprocess.kill")
+        mock_kill = mocker.patch("airflow.sdk.execution_time.base_supervisor.WatchedSubprocess.kill")
 
         # Mock the current monotonic time
         mocker.patch("time.monotonic", return_value=20.0)
 
         # Patch the task overtime threshold
         monkeypatch.setattr(
-            "airflow.sdk.execution_time.supervisor.TASK_OVERTIME_THRESHOLD", overtime_threshold
+            "airflow.sdk.execution_time.task_supervisor.TASK_OVERTIME_THRESHOLD", overtime_threshold
         )
 
         mock_watched_subprocess = ActivitySubprocess(
@@ -1087,7 +1089,7 @@ class TestWatchedSubprocess:
     def test_cleanup_sockets_after_delay(self, monkeypatch, mocker, time_machine):
         """Supervisor should close sockets if EOF events are missed."""
 
-        monkeypatch.setattr("airflow.sdk.execution_time.supervisor.SOCKET_CLEANUP_TIMEOUT", 1.0)
+        monkeypatch.setattr("airflow.sdk.execution_time.task_supervisor.SOCKET_CLEANUP_TIMEOUT", 1.0)
 
         mock_process = mocker.Mock(pid=12345)
 
@@ -1315,8 +1317,8 @@ class TestWatchedSubprocessKill:
         """Test that max_wait_time calculation prevents CPU spike when heartbeat timeout is reached."""
         # Mock the configuration to reproduce the CPU spike scenario
         # Set heartbeat timeout to be very small relative to MIN_HEARTBEAT_INTERVAL
-        monkeypatch.setattr("airflow.sdk.execution_time.supervisor.HEARTBEAT_TIMEOUT", 1)
-        monkeypatch.setattr("airflow.sdk.execution_time.supervisor.MIN_HEARTBEAT_INTERVAL", 10)
+        monkeypatch.setattr("airflow.sdk.execution_time.task_supervisor.HEARTBEAT_TIMEOUT", 1)
+        monkeypatch.setattr("airflow.sdk.execution_time.task_supervisor.MIN_HEARTBEAT_INTERVAL", 10)
 
         # Set up a scenario where the last successful heartbeat was a long time ago
         # This will cause the heartbeat calculation to result in a negative value
@@ -1360,8 +1362,8 @@ class TestWatchedSubprocessKill:
         expected_min_timeout,
     ):
         """Test max_wait_time calculation in various edge case scenarios."""
-        monkeypatch.setattr("airflow.sdk.execution_time.supervisor.HEARTBEAT_TIMEOUT", heartbeat_timeout)
-        monkeypatch.setattr("airflow.sdk.execution_time.supervisor.MIN_HEARTBEAT_INTERVAL", min_interval)
+        monkeypatch.setattr("airflow.sdk.execution_time.task_supervisor.HEARTBEAT_TIMEOUT", heartbeat_timeout)
+        monkeypatch.setattr("airflow.sdk.execution_time.task_supervisor.MIN_HEARTBEAT_INTERVAL", min_interval)
 
         watched_subprocess._last_successful_heartbeat = time.time() - heartbeat_ago
         mock_process.wait.side_effect = psutil.TimeoutExpired(pid=12345, seconds=0)
@@ -2551,7 +2553,7 @@ class TestHandleRequest:
 
         return subprocess, read_end
 
-    @patch("airflow.sdk.execution_time.supervisor.mask_secret")
+    @patch("airflow.sdk.execution_time.task_supervisor.mask_secret")
     @pytest.mark.parametrize("test_case", REQUEST_TEST_CASES, ids=lambda tc: tc.test_id)
     def test_handle_requests(
         self,
@@ -3056,7 +3058,7 @@ def test_remote_logging_conn_caches_connection_not_client(monkeypatch):
     monkeypatch.delitem(sys.modules, "airflow.config_templates.airflow_local_settings", raising=False)
     monkeypatch.delitem(sys.modules, "airflow.sdk.log", raising=False)
 
-    from airflow.sdk.execution_time import supervisor
+    from airflow.sdk.execution_time import task_supervisor
 
     class ExampleBackend:
         def __init__(self):
@@ -3069,7 +3071,7 @@ def test_remote_logging_conn_caches_connection_not_client(monkeypatch):
             return Connection(conn_id=conn_id, conn_type="example")
 
     backend = ExampleBackend()
-    monkeypatch.setattr(supervisor, "ensure_secrets_backend_loaded", lambda: [backend])
+    monkeypatch.setattr(task_supervisor, "ensure_secrets_backend_loaded", lambda: [backend])
     monkeypatch.delenv("AIRFLOW_CONN_TEST_CONN", raising=False)
 
     with conf_vars(

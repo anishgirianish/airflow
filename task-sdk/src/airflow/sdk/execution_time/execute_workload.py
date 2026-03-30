@@ -42,7 +42,7 @@ log = structlog.get_logger(logger_name=__name__)
 def execute_workload(workload: ExecuteTask) -> None:
     from airflow.executors import workloads
     from airflow.sdk.configuration import conf
-    from airflow.sdk.execution_time.supervisor import supervise
+    from airflow.sdk.execution_time.task_supervisor import supervise_task
     from airflow.sdk.log import configure_logging
     from airflow.settings import dispose_orm
 
@@ -63,7 +63,7 @@ def execute_workload(workload: ExecuteTask) -> None:
     server = conf.get("core", "execution_api_server_url", fallback=default_execution_api_server)
     log.info("Connecting to server:", server=server)
 
-    supervise(
+    supervise_task(
         # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
         ti=workload.ti,  # type: ignore[arg-type]
         dag_rel_path=workload.dag_rel_path,

@@ -181,7 +181,7 @@ class TestEdgeWorker:
         "airflow.providers.edge3.cli.worker._execution_api_server_url",
         return_value="https://mock-execution-api",
     )
-    @patch("airflow.sdk.execution_time.supervisor.supervise")
+    @patch("airflow.sdk.execution_time.task_supervisor.supervise_task")
     @pytest.mark.asyncio
     async def test_supervise_launch(
         self,
@@ -200,7 +200,7 @@ class TestEdgeWorker:
         "airflow.providers.edge3.cli.worker._execution_api_server_url",
         return_value="https://mock-execution-api",
     )
-    @patch("airflow.sdk.execution_time.supervisor.supervise")
+    @patch("airflow.sdk.execution_time.task_supervisor.supervise_task")
     @pytest.mark.asyncio
     async def test_supervise_launch_fail(
         self,

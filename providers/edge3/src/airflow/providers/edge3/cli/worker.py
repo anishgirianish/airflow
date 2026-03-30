@@ -196,7 +196,7 @@ class EdgeWorker:
         return EdgeWorkerState.IDLE
 
     def _run_job_via_supervisor(self, workload: ExecuteTask, results_queue: Queue) -> int:
-        from airflow.sdk.execution_time.supervisor import supervise
+        from airflow.sdk.execution_time.task_supervisor import supervise_task
 
         # Ignore ctrl-c in this process -- we don't want to kill _this_ one. we let tasks run to completion
         os.setpgrp()
@@ -210,7 +210,7 @@ class EdgeWorker:
         )
 
         try:
-            supervise(
+            supervise_task(
                 # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
                 # Same like in airflow/executors/local_executor.py:_execute_work()
                 ti=ti,  # type: ignore[arg-type]

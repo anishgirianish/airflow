@@ -198,7 +198,7 @@ def execute_workload(input: str) -> None:
 
     from airflow.executors import workloads
     from airflow.providers.common.compat.sdk import conf
-    from airflow.sdk.execution_time.supervisor import supervise
+    from airflow.sdk.execution_time.task_supervisor import supervise_task
 
     decoder = TypeAdapter[workloads.All](workloads.All)
     workload = decoder.validate_json(input)
@@ -215,7 +215,7 @@ def execute_workload(input: str) -> None:
 
     try:
         if isinstance(workload, workloads.ExecuteTask):
-            supervise(
+            supervise_task(
                 # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
                 ti=workload.ti,  # type: ignore[arg-type]
                 dag_rel_path=workload.dag_rel_path,
